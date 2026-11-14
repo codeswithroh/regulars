@@ -38,7 +38,7 @@ rate), and both contract addresses follow from them. So a shop *is* its link:
 | Folder | What it is |
 |---|---|
 | `contracts/` | The two covenants, the shared transaction builders, and tests |
-| `web/` | The site: home, shop page, open-a-shop form, printable poster |
+| `web/` | The site: an animated landing page (`#/`) and a separate dashboard (`#/app`) with overview, shop checkout, activity, merchant analytics read from the chain, open-a-shop, and a printable poster |
 | `cli/` | Owner tools (open the demo shop, status, collect fees) and a live multi-customer check |
 | `e2e/` | Browser tests: Chromium driven by Playwright, with a headless WizardConnect wallet |
 | `scripts/` | Vercel static build |

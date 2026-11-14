@@ -39,10 +39,22 @@ const extraWallets: TestWallet[] = [];
 const open = async (): Promise<Page> => (await browser.newContext({ baseURL })).newPage();
 const pair = async (page: Page, wallet: TestWallet, path: string) => {
   await page.goto(`/#${path}`);
-  await page.getByRole('button', { name: 'Connect wallet' }).click();
+  await page.locator('.top').getByRole('button', { name: 'Connect wallet' }).click();
   wallet.connect((await page.getByTestId('pairing').getAttribute('data-uri'))!);
   await expect(page.getByRole('button', { name: /Test Wallet · Disconnect/ })).toBeVisible();
   await expect(page.getByTestId('balance')).toBeVisible();
+};
+
+/** Pick an amount (a preset like '5,000' or a custom number) and confirm with the Pay button. */
+const payWith = async (page: Page, amount: string, custom = false) => {
+  if (custom) await page.getByLabel('Other amount in sats').fill(amount.replace(/,/g, ''));
+  else await page.getByRole('radio', { name: new RegExp(`^${amount} sats`) }).click();
+  await page.getByRole('button', { name: new RegExp(`^Pay ${amount} sats`) }).click();
+};
+/** Open the Redeem tab and redeem every stamp. */
+const redeemAll = async (page: Page) => {
+  await page.getByRole('tab', { name: /^Redeem/ }).click();
+  await page.getByRole('button', { name: /^Redeem \d+ stamps/ }).click();
 };
 
 beforeAll(async () => {
@@ -50,11 +62,16 @@ beforeAll(async () => {
   // Fund both throwaway wallets from the owner key. The merchant's coin is deliberately not
   // output 0, so opening a shop has to take the two-signature path.
   await withConnection(async (provider) => {
-    const coin = (await provider.getUtxos(owner.address)).filter((u) => !u.token).sort((a, b) => Number(b.satoshis - a.satoshis))[0];
+    // Combine the owner's plain coins: test runs leave them fragmented.
+    const coins = (await provider.getUtxos(owner.address)).filter((u) => !u.token);
+    const total = coins.reduce((sum, u) => sum + u.satoshis, 0n);
     const withMerchant = !process.env.E2E_SKIP_MERCHANT;
-    const tx = new TransactionBuilder({ provider }).addInput(coin, owner.signer.unlockP2PKH()).addOutput({ to: customerAddress, amount: START_BALANCE });
+    const spend = START_BALANCE + (withMerchant ? MERCHANT_BALANCE : 0n);
+    const fee = BigInt(coins.length) * 150n + 300n;
+    if (total < spend + fee + 546n) throw new Error(`Owner key holds ${total} sats; tests need ${spend + fee}. Fund ${owner.address}.`);
+    const tx = new TransactionBuilder({ provider }).addInputs(coins, owner.signer.unlockP2PKH()).addOutput({ to: customerAddress, amount: START_BALANCE });
     if (withMerchant) tx.addOutput({ to: merchant.address(DerivationPath.Receive, 0), amount: MERCHANT_BALANCE });
-    await tx.addOutput({ to: owner.address, amount: coin.satoshis - START_BALANCE - (withMerchant ? MERCHANT_BALANCE : 0n) - 400n }).send();
+    await tx.addOutput({ to: owner.address, amount: total - spend - fee }).send();
   });
 });
 
@@ -73,10 +90,9 @@ test('a customer pays and receives stamps in the same transaction, then redeems 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(shop.name);
   await expect(page.getByTestId('balance')).toContainText(`${num(START_BALANCE)} sats`);
   await expect(page.getByTestId('stamps')).toHaveText('0');
-  await expect(page.getByRole('button', { name: 'Redeem for BCH' })).toBeDisabled();
   const before = await chain(shop);
 
-  await page.getByRole('button', { name: '5,000 sats', exact: true }).click();
+  await payWith(page, '5,000');
   await expect(page.getByRole('status')).toContainText('earned 5 stamps in the same transaction');
   await expect(page.getByTestId('stamps')).toHaveText('5');
 
@@ -89,7 +105,7 @@ test('a customer pays and receives stamps in the same transaction, then redeems 
   check(before.stampsLeft - paid.stampsLeft).toBe(5n);
   check(paid.issuerSats - before.issuerSats).toBe(5n * fees.feePerStamp);
 
-  await page.getByRole('button', { name: 'Redeem for BCH' }).click();
+  await redeemAll(page);
   await expect(page.getByRole('status')).toContainText(/Redeemed 5 stamps for/);
   await expect(page.getByTestId('stamps')).toHaveText('0');
   const after = await chain(shop);
@@ -108,19 +124,18 @@ test('a rejected signature charges nothing; several payments and a custom amount
   const before = await chain(shop);
 
   customer.rejectNext = true;
-  await page.getByRole('button', { name: '2,000 sats', exact: true }).click();
+  await payWith(page, '2,000');
   await expect(page.locator('.notice.error')).toContainText('User rejected the request');
   check(customer.signed).toHaveLength(signedBefore);
   check((await chain(shop)).stampsLeft).toBe(before.stampsLeft);
 
-  await page.getByRole('button', { name: '2,000 sats', exact: true }).click();
+  await payWith(page, '2,000');
   await expect(page.getByRole('status')).toContainText('earned 2 stamps');
-  await page.getByLabel('Other amount in sats').fill('3500');
-  await page.getByRole('button', { name: 'Pay', exact: true }).click();
+  await payWith(page, '3,500', true);
   await expect(page.getByRole('status')).toContainText('Paid 3,500 sats and earned 3 stamps');
   await expect(page.getByTestId('stamps')).toHaveText('5');
 
-  await page.getByRole('button', { name: 'Redeem for BCH' }).click();
+  await redeemAll(page);
   await expect(page.getByRole('status')).toContainText(/Redeemed 5 stamps for/);
   await expect(page.getByTestId('stamps')).toHaveText('0');
   const after = await chain(shop);
@@ -132,8 +147,8 @@ test('a wallet without funds gets a clear message instead of a broken transactio
   const empty = new TestWallet(prefix);
   const page = await open();
   await pair(page, empty, shopPath(shop));
-  await expect(page.getByTestId('balance')).toContainText('0 sats');
-  await page.getByRole('button', { name: '2,000 sats', exact: true }).click();
+  await expect(page.getByTestId('balance')).toContainText('Balance 0 sats');
+  await payWith(page, '2,000');
   await expect(page.locator('.notice.error')).toContainText('not enough to pay');
   check(empty.signed).toHaveLength(0);
   extraWallets.push(empty);
@@ -142,16 +157,28 @@ test('a wallet without funds gets a clear message instead of a broken transactio
 test('a wallet reconnects after a page reload without scanning again', async () => {
   const page = await open();
   await pair(page, customer, shopPath(shop));
+
+  // The connected dashboard reflects this wallet's earlier payments and redemptions.
+  await page.goto('/#/app');
+  await expect(page.getByTestId('tile-balance')).toContainText('sats');
+  await expect(page.getByTestId('tile-stamps')).not.toContainText('—');
+  await page.goto('/#/app/activity');
+  await expect(page.locator('tbody tr').first()).toBeVisible();
+  await expect(page.locator('tbody')).toContainText(shop.name);
+  await expect(page.locator('tbody')).toContainText('Redeemed');
+
+  await page.goto(`/#${shopPath(shop)}`);
   await page.reload();
   await expect(page.getByRole('button', { name: /Test Wallet · Disconnect/ })).toBeVisible();
   await expect(page.getByTestId('balance')).toBeVisible();
-  await page.getByRole('button', { name: /Disconnect/ }).click();
-  await expect(page.getByRole('button', { name: 'Connect wallet' })).toBeVisible();
+  await page.getByRole('button', { name: /Test Wallet · Disconnect/ }).click();
+  await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await expect(page.locator('.top').getByRole('button', { name: 'Connect wallet' })).toBeVisible();
 });
 
 test.skipIf(Boolean(process.env.E2E_SKIP_MERCHANT))('a merchant opens a shop from their own wallet and a customer earns there', async () => {
   const page = await open();
-  await pair(page, merchant, '/new');
+  await pair(page, merchant, '/app/new');
   await expect(page.getByTestId('summary')).toContainText('Give your shop a name');
   await expect(page.getByRole('button', { name: 'Open shop' })).toBeDisabled();
 
@@ -179,11 +206,11 @@ test.skipIf(Boolean(process.env.E2E_SKIP_MERCHANT))('a merchant opens a shop fro
   const visitor = await open();
   await pair(visitor, customer, shopPath(opened));
   await expect(visitor.getByRole('heading', { level: 1 })).toHaveText('Corner Coffee & Co');
-  await visitor.getByRole('button', { name: '1,000 sats', exact: true }).click();
+  await payWith(visitor, '1,000');
   await expect(visitor.getByRole('status')).toContainText('earned 2 stamps');
   const paidTo = merchant.address(DerivationPath.Receive, 0);
   check((await utxosAt(paidTo)).some((u) => u.satoshis === 1000n - 2n * fees.feePerStamp)).toBe(true);
-  await visitor.getByRole('button', { name: 'Redeem for BCH' }).click();
+  await redeemAll(visitor);
   await expect(visitor.getByRole('status')).toContainText(/Redeemed 2 stamps for/);
   check((await chain(opened)).reserveSats).toBe(6000n - 40n);
 });
@@ -196,7 +223,19 @@ test('the home page shows the live demo shop, and broken links are handled', asy
   await expect(page.getByTestId('demo-reserve')).toHaveText(`${num((await chain(shop)).reserveSats)} sats`);
   await page.getByRole('button', { name: 'Try the demo shop' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(shop.name);
-  for (const amount of ['2,000', '5,000', '10,000']) await expect(page.getByRole('button', { name: `${amount} sats`, exact: true })).toBeDisabled();
+  // Not connected: the pay panel asks for a wallet instead of offering to pay.
+  await expect(page.locator('.pay-main').getByRole('button', { name: 'Connect wallet' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Pay / })).toHaveCount(0);
+
+  // The landing CTA carries the shop name into the open-a-shop form.
+  await page.goto('/');
+  await page.getByLabel("Your shop's name").fill('Sunrise Bakery');
+  await page.getByRole('button', { name: 'START' }).click();
+  await expect(page.getByLabel('Shop name')).toHaveValue('Sunrise Bakery');
+
+  // The dashboard's analytics read the demo shop's history from the chain.
+  await page.goto('/#/app/manage');
+  await expect(page.getByTestId('revenue')).toContainText('sats');
 
   await page.goto('/#/s/Nope/zz/zz/1/1');
   await expect(page.locator('.notice.error')).toContainText('not a valid shop');

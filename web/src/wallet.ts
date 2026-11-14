@@ -9,7 +9,7 @@ import { network, prefix, protocol } from './config';
 // One long-lived Electrum connection for the page, rather than a new socket per request.
 export const provider = new ElectrumNetworkProvider(network, { manualConnectionManagement: true });
 let connecting: Promise<void> | undefined;
-const online = () => (connecting ??= provider.connect().catch((error) => { connecting = undefined; throw error; }));
+export const online = () => (connecting ??= provider.connect().catch((error) => { connecting = undefined; throw error; }));
 
 /** How many addresses to look at on each of the wallet's receive and change paths. */
 const ADDRESSES_PER_PATH = 10;
@@ -23,6 +23,24 @@ const addressesOf = (pubkey: Uint8Array) => {
   const of = (type: 'p2pkh' | 'p2pkhWithTokens') => encodeCashAddress({ prefix, type, payload, throwErrors: true }).address;
   return { address: of('p2pkh'), tokenAddress: of('p2pkhWithTokens'), pkh: binToHex(payload) };
 };
+
+/** hash160s (hex) of the wallet addresses this site looks at. */
+export function walletPkhs(manager: DappConnectionManager): Set<string> {
+  const pkhs = new Set<string>();
+  for (const path of PATHS) {
+    for (let index = 0; index < ADDRESSES_PER_PATH; index++) {
+      const pubkey = manager.getPubkey(path.child, BigInt(index));
+      if (pubkey) pkhs.add(binToHex(hash160(pubkey)));
+    }
+  }
+  return pkhs;
+}
+
+/** The address payments to a shop opened from this wallet would go to. */
+export function primaryPkh(manager: DappConnectionManager): string | undefined {
+  const pubkey = manager.getPubkey(0, 0n);
+  return pubkey ? binToHex(hash160(pubkey)) : undefined;
+}
 
 export async function readWallet(manager: DappConnectionManager): Promise<WalletState> {
   await online();
@@ -128,6 +146,20 @@ export async function redeemStamps(manager: DappConnectionManager, wallet: Walle
   });
   const txid = await signAndSend(manager, builder, held.map((u, i) => pathOf(u, i + 1)), `Redeem ${stamps} stamps for ${plan.payout} sats`);
   return { txid, plan };
+}
+
+/** Add BCH to a shop's reward reserve. Anyone can do this; the shop cannot take it back except by closing. */
+export async function fundReserve(manager: DappConnectionManager, wallet: WalletState, shop: Shop, amount: bigint) {
+  const coins = pickCoins(wallet, amount + 1000n);
+  const total = coins.reduce((s, c) => s + c.satoshis, 0n);
+  const fee = BigInt(coins.length) * (41n + PLACEHOLDER_INPUT_BYTES) + 2n * 44n + 20n;
+  if (total < amount + fee) throw new Error(`Your wallet holds ${wallet.bch} sats, not enough to add ${amount}`);
+  const builder = new TransactionBuilder({ provider });
+  coins.forEach((c) => builder.addInput(c, placeholderP2PKHUnlocker(c.address)));
+  builder.addOutput({ to: makeReserve(shop, provider).address, amount });
+  const change = total - amount - fee;
+  if (change >= BCH_DUST) builder.addOutput({ to: coins[0].address, amount: change });
+  return signAndSend(manager, builder, coins.map(pathOf), `Add ${amount} sats to the ${shop.name} reward reserve`);
 }
 
 export interface NewShop { name: string; earn: bigint; redeem: bigint; reserveSats: bigint; supply: bigint }
