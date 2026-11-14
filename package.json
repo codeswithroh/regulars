@@ -6,7 +6,8 @@
     "contracts",
     "cli",
     "web",
-    "e2e"
+    "e2e",
+    "xo"
   ],
   "scripts": {
     "compile": "npm run compile -w contracts",

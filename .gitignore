@@ -9,3 +9,4 @@ server/data
 test-results
 .claude
 cli/data
+xo/.data

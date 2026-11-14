@@ -6,7 +6,8 @@
   "scripts": {
     "shop": "tsx src/shop.ts",
     "e2e": "tsx src/e2e.ts",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "check-tx": "tsx src/check-tx.ts"
   },
   "dependencies": {
     "@bitauth/libauth": "3.1.0-next.8",
@@ -14,5 +15,9 @@
     "cashscript": "^0.14.0",
     "dotenv": "^16.4.0"
   },
-  "devDependencies": { "tsx": "^4.19.0", "typescript": "^5.6.0", "@types/node": "^22.0.0" }
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
 }

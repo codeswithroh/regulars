@@ -1,0 +1,443 @@
+{
+  "$schema": "https://libauth.org/schemas/wallet-template-v0.schema.json",
+  "name": "Regulars",
+  "description": "Loyalty stamps on Bitcoin Cash: pay a shop and receive its stamps in the same transaction, then redeem them for BCH from a reserve the shop locked up front.",
+  "icon": "regulars",
+  "version": "1",
+  "supported": [
+    "BCH_2025_05",
+    "BCH_2026_05"
+  ],
+  "resources": [
+    {
+      "name": "Regulars",
+      "description": "Live app and source code.",
+      "url": "https://github.com/codeswithroh/regulars"
+    }
+  ],
+  "roles": {
+    "customer": {
+      "name": "Customer",
+      "description": "Pays the shop and holds its stamps.",
+      "icon": "customer"
+    }
+  },
+  "start": [
+    {
+      "action": "earn",
+      "role": "customer",
+      "generate": [
+        "ownerKey"
+      ]
+    }
+  ],
+  "actions": {
+    "earn": {
+      "name": "Pay and earn stamps",
+      "description": "Pay a shop and take the stamps that payment earns from its issuer contract, in one transaction.",
+      "icon": "stamp",
+      "roles": {
+        "customer": {
+          "requirements": {
+            "variables": [
+              "stampCategory",
+              "merchantPkh",
+              "satsPerStampEarned",
+              "satsPerStampRedeemed",
+              "feePerStamp",
+              "protocolPkh",
+              "issuerSatoshis",
+              "issuerStamps",
+              "stamps"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "participants": [
+          {
+            "role": "customer",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "transaction": "earnTransaction"
+    },
+    "redeem": {
+      "name": "Redeem stamps",
+      "description": "Hand stamps to the shop's reward reserve and take the BCH they are worth.",
+      "icon": "redeem",
+      "roles": {
+        "customer": {
+          "requirements": {
+            "variables": [
+              "stampCategory",
+              "merchantPkh",
+              "satsPerStampEarned",
+              "satsPerStampRedeemed",
+              "reserveSatoshis",
+              "reserveStamps",
+              "stamps"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "participants": [
+          {
+            "role": "customer",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "transaction": "redeemTransaction"
+    }
+  },
+  "transactions": {
+    "earnTransaction": {
+      "name": "Earned stamps",
+      "description": "Paid a shop and earned $(<stamps>) stamps.",
+      "icon": "stamp",
+      "inputs": [
+        {
+          "input": "issuerInput",
+          "inputIndex": 0
+        }
+      ],
+      "outputs": [
+        {
+          "output": "issuerOutput",
+          "outputIndex": 0
+        },
+        {
+          "output": "shopPaymentOutput",
+          "outputIndex": 1
+        },
+        {
+          "output": "stampsOutput"
+        }
+      ]
+    },
+    "redeemTransaction": {
+      "name": "Redeemed stamps",
+      "description": "Redeemed $(<stamps>) stamps for BCH.",
+      "icon": "redeem",
+      "inputs": [
+        {
+          "input": "reserveInput",
+          "inputIndex": 0
+        }
+      ],
+      "outputs": [
+        {
+          "output": "reserveOutput",
+          "outputIndex": 0
+        }
+      ]
+    }
+  },
+  "inputs": {
+    "issuerInput": {
+      "name": "Stamp issuer",
+      "description": "The shop's issuer contract output being drawn from.",
+      "icon": "contract",
+      "valueSatoshis": "$(<issuerSatoshis>)",
+      "token": {
+        "category": "$(<stampCategory>)",
+        "amount": "$(<issuerStamps>)",
+        "nft": null
+      },
+      "unlockingScript": "issuerEarnUnlockingBytecode"
+    },
+    "reserveInput": {
+      "name": "Reward reserve",
+      "description": "The shop's reward reserve being redeemed against.",
+      "icon": "contract",
+      "valueSatoshis": "$(<reserveSatoshis>)",
+      "token": {
+        "category": "$(<stampCategory>)",
+        "amount": "$(<reserveStamps>)",
+        "nft": null
+      },
+      "unlockingScript": "reserveRedeemUnlockingBytecode"
+    }
+  },
+  "outputs": {
+    "issuerOutput": {
+      "name": "Stamp issuer",
+      "description": "The issuer contract, recreated with fewer stamps and the protocol fee added.",
+      "icon": "contract",
+      "lockingScript": "issuerLockingScript",
+      "valueSatoshis": "$(<issuerSatoshis> <stamps> <feePerStamp> OP_MUL OP_ADD)",
+      "token": {
+        "category": "$(<stampCategory>)",
+        "amount": "$(<issuerStamps> <stamps> OP_SUB)",
+        "nft": null
+      },
+      "selectable": false,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      }
+    },
+    "shopPaymentOutput": {
+      "name": "Payment to shop",
+      "description": "What the shop receives for the stamps earned.",
+      "icon": "shop",
+      "lockingScript": "shopLockingScript",
+      "valueSatoshis": "$(<stamps> <satsPerStampEarned> <feePerStamp> OP_SUB OP_MUL)",
+      "token": null,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      }
+    },
+    "stampsOutput": {
+      "name": "Stamps",
+      "description": "$(<stamps>) loyalty stamps, redeemable at the shop reserve.",
+      "icon": "stamp",
+      "lockingScript": "stampsLockingScript",
+      "valueSatoshis": "$(<tokenDust>)",
+      "token": {
+        "category": "$(<stampCategory>)",
+        "amount": "$(<stamps>)",
+        "nft": null
+      }
+    },
+    "reserveOutput": {
+      "name": "Reward reserve",
+      "description": "The reserve, recreated holding the handed-in stamps and less BCH.",
+      "icon": "contract",
+      "lockingScript": "reserveLockingScript",
+      "valueSatoshis": "$(<reserveSatoshis> <stamps> <satsPerStampRedeemed> OP_MUL OP_SUB)",
+      "token": {
+        "category": "$(<stampCategory>)",
+        "amount": "$(<reserveStamps> <stamps> OP_ADD)",
+        "nft": null
+      },
+      "selectable": false,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      }
+    }
+  },
+  "lockingScripts": {
+    "issuerLockingScript": {
+      "name": "Stamp issuer contract",
+      "description": "Releases a shop's stamps only in a transaction that pays the shop for them.",
+      "icon": "contract",
+      "lockingType": "p2sh",
+      "lockingBytecode": "issuerRedeemBytecode",
+      "state": {
+        "variables": [],
+        "secrets": []
+      },
+      "selectable": false,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      },
+      "roles": {
+        "customer": {
+          "relevant": false
+        }
+      }
+    },
+    "reserveLockingScript": {
+      "name": "Reward reserve contract",
+      "description": "Pays a fixed amount of BCH for every stamp handed in.",
+      "icon": "contract",
+      "lockingType": "p2sh",
+      "lockingBytecode": "reserveRedeemBytecode",
+      "state": {
+        "variables": [],
+        "secrets": []
+      },
+      "selectable": false,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      },
+      "roles": {
+        "customer": {
+          "relevant": false
+        }
+      }
+    },
+    "shopLockingScript": {
+      "name": "Shop",
+      "description": "The shop's own address, where payments go.",
+      "icon": "shop",
+      "lockingType": "p2s",
+      "lockingBytecode": "shopP2PKH",
+      "state": {
+        "variables": [],
+        "secrets": []
+      },
+      "selectable": false,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      },
+      "roles": {
+        "customer": {
+          "relevant": false
+        }
+      }
+    },
+    "stampsLockingScript": {
+      "name": "Stamps",
+      "description": "Loyalty stamps held by the customer's own key.",
+      "icon": "stamp",
+      "lockingType": "p2pkh",
+      "lockingBytecode": "lockStamps",
+      "unlockingBytecode": "unlockStamps",
+      "actions": [],
+      "roles": {
+        "customer": {
+          "state": {
+            "variables": [],
+            "secrets": [
+              "ownerKey"
+            ]
+          },
+          "actions": [
+            {
+              "action": "redeem",
+              "role": "customer",
+              "secrets": [
+                {
+                  "ownerKey": null
+                }
+              ]
+            }
+          ],
+          "balance": {
+            "satoshis": true,
+            "fungibleTokens": true,
+            "nonfungibleTokens": 0
+          },
+          "selectable": false
+        }
+      }
+    }
+  },
+  "scripts": {
+    "issuerRedeemBytecode": "<protocolPkh> <feePerStamp> <merchantPkh> <satsPerStampEarned> <$(<stampCategory> OP_REVERSEBYTES)> OP_5 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_INPUTINDEX OP_0 OP_NUMEQUALVERIFY OP_0 OP_OUTPUTBYTECODE OP_0 OP_UTXOBYTECODE OP_EQUALVERIFY OP_0 OP_OUTPUTTOKENCATEGORY OP_EQUALVERIFY OP_0 OP_UTXOTOKENAMOUNT OP_0 OP_OUTPUTTOKENAMOUNT OP_SUB OP_DUP OP_0 OP_GREATERTHAN OP_VERIFY OP_0 OP_OUTPUTVALUE OP_0 OP_UTXOVALUE OP_2 OP_PICK OP_6 OP_PICK OP_MUL OP_ADD OP_GREATERTHANOREQUAL OP_VERIFY OP_1 OP_OUTPUTBYTECODE <0x76a914> OP_4 OP_ROLL OP_CAT <0x88ac> OP_CAT OP_EQUALVERIFY OP_1 OP_OUTPUTVALUE OP_SWAP OP_2SWAP OP_SWAP OP_SUB OP_MUL OP_GREATERTHANOREQUAL OP_NIP OP_NIP OP_ELSE OP_5 OP_PICK OP_1 OP_NUMEQUAL OP_IF OP_INPUTINDEX OP_0 OP_NUMEQUALVERIFY OP_0 OP_UTXOVALUE <0x204e> OP_GREATERTHANOREQUAL OP_VERIFY OP_0 OP_OUTPUTBYTECODE OP_0 OP_UTXOBYTECODE OP_EQUALVERIFY OP_0 OP_OUTPUTTOKENCATEGORY OP_0 OP_UTXOTOKENCATEGORY OP_EQUALVERIFY OP_0 OP_OUTPUTTOKENAMOUNT OP_0 OP_UTXOTOKENAMOUNT OP_NUMEQUALVERIFY OP_0 OP_OUTPUTVALUE <0xe803> OP_GREATERTHANOREQUAL OP_VERIFY OP_1 OP_OUTPUTBYTECODE <0x76a914> OP_6 OP_ROLL OP_CAT <0x88ac> OP_CAT OP_EQUALVERIFY OP_1 OP_OUTPUTVALUE OP_0 OP_UTXOVALUE <0xd007> OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_2DROP OP_2DROP OP_DROP OP_1 OP_ELSE OP_5 OP_ROLL OP_2 OP_NUMEQUALVERIFY OP_5 OP_PICK OP_HASH160 OP_3 OP_ROLL OP_EQUALVERIFY OP_2ROT OP_CHECKSIGVERIFY OP_INPUTINDEX OP_0 OP_NUMEQUALVERIFY OP_0 OP_UTXOVALUE <0xb80b> OP_GREATERTHAN OP_IF OP_0 OP_OUTPUTBYTECODE <0x76a914> OP_5 OP_PICK OP_CAT <0x88ac> OP_CAT OP_EQUALVERIFY OP_0 OP_OUTPUTVALUE OP_0 OP_UTXOVALUE <0xd007> OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_ENDIF OP_2DROP OP_2DROP OP_1 OP_ENDIF OP_ENDIF",
+    "issuerEarnUnlockingBytecode": "OP_0 <issuerRedeemBytecode>",
+    "reserveRedeemBytecode": "<merchantPkh> <satsPerStampRedeemed> <$(<stampCategory> OP_REVERSEBYTES)> OP_3 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_INPUTINDEX OP_DUP OP_OUTPUTBYTECODE OP_OVER OP_UTXOBYTECODE OP_EQUALVERIFY OP_DUP OP_OUTPUTTOKENCATEGORY OP_2 OP_PICK OP_EQUALVERIFY OP_0 OP_OVER OP_UTXOTOKENCATEGORY OP_3 OP_ROLL OP_EQUAL OP_IF OP_OVER OP_UTXOTOKENAMOUNT OP_NIP OP_ELSE OP_OVER OP_UTXOTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_ENDIF OP_OVER OP_OUTPUTTOKENAMOUNT OP_SWAP OP_SUB OP_DUP OP_0 OP_GREATERTHAN OP_VERIFY OP_OVER OP_OUTPUTVALUE OP_ROT OP_UTXOVALUE OP_2SWAP OP_MUL OP_SUB OP_GREATERTHANOREQUAL OP_NIP OP_NIP OP_ELSE OP_3 OP_ROLL OP_1 OP_NUMEQUALVERIFY OP_3 OP_PICK OP_HASH160 OP_3 OP_ROLL OP_EQUALVERIFY OP_2SWAP OP_CHECKSIG OP_NIP OP_NIP OP_ENDIF",
+    "reserveRedeemUnlockingBytecode": "OP_0 <reserveRedeemBytecode>",
+    "shopP2PKH": "OP_DUP OP_HASH160 <merchantPkh> OP_EQUALVERIFY OP_CHECKSIG",
+    "lockStamps": "OP_DUP OP_HASH160 <$(<ownerKey.public_key> OP_HASH160)> OP_EQUALVERIFY OP_CHECKSIG",
+    "unlockStamps": "<ownerKey.schnorr_signature.all_outputs> <ownerKey.public_key>"
+  },
+  "constants": {
+    "tokenDust": {
+      "name": "Token output value",
+      "description": "Satoshis carried by an output holding tokens.",
+      "type": "satoshis",
+      "value": "<bigint: 1000n>"
+    }
+  },
+  "variables": {
+    "ownerKey": {
+      "name": "Stamp key",
+      "description": "Key that holds the stamps the customer earns.",
+      "type": "private_key"
+    },
+    "stampCategory": {
+      "name": "Stamp token",
+      "description": "Token category of the shop's stamps, as wallets show it.",
+      "type": "token_category"
+    },
+    "merchantPkh": {
+      "name": "Shop key hash",
+      "description": "hash160 of the key the shop is paid to.",
+      "type": "bytes"
+    },
+    "satsPerStampEarned": {
+      "name": "Sats per stamp",
+      "description": "The customer earns one stamp per this many satoshis paid.",
+      "type": "integer"
+    },
+    "satsPerStampRedeemed": {
+      "name": "Reward per stamp",
+      "description": "Satoshis the reserve pays for each stamp.",
+      "type": "integer"
+    },
+    "feePerStamp": {
+      "name": "Protocol fee per stamp",
+      "description": "Satoshis per stamp issued that stay in the issuer for the protocol.",
+      "type": "integer"
+    },
+    "protocolPkh": {
+      "name": "Protocol key hash",
+      "description": "hash160 of the protocol treasury key.",
+      "type": "bytes"
+    },
+    "issuerSatoshis": {
+      "name": "Issuer satoshis",
+      "description": "Satoshis on the issuer output being spent.",
+      "type": "satoshis"
+    },
+    "issuerStamps": {
+      "name": "Issuer stamps",
+      "description": "Stamps on the issuer output being spent.",
+      "type": "token_amount"
+    },
+    "reserveSatoshis": {
+      "name": "Reserve satoshis",
+      "description": "Satoshis on the reserve output being spent.",
+      "type": "satoshis"
+    },
+    "reserveStamps": {
+      "name": "Reserve stamps",
+      "description": "Stamps already handed in to the reserve output being spent.",
+      "type": "token_amount"
+    },
+    "stamps": {
+      "name": "Stamps",
+      "description": "Number of stamps to earn or redeem.",
+      "type": "token_amount"
+    }
+  },
+  "icons": [
+    {
+      "name": "regulars",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "customer",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "stamp",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "redeem",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "contract",
+      "hash": "0000000000000000000000"
+    },
+    {
+      "name": "shop",
+      "hash": "0000000000000000000000"
+    }
+  ]
+}
