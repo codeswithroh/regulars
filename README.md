@@ -2,7 +2,7 @@
 
 Loyalty points that are real money: a loyalty protocol on Bitcoin Cash with no backend.
 
-Live on mainnet: https://regulars-bch.vercel.app · Presentation: https://regulars-bch.vercel.app/deck.html
+Live on mainnet: https://regulars-bch.vercel.app · Presentation: https://docs.google.com/presentation/d/1RxO2ur5DGFXfTMQYQLL3Z7BUJ21l8KPd_lvPzDl7blc/edit?usp=sharing
 
 - A customer pays a shop in BCH and receives **stamps** (a CashToken) **in the same transaction**.
 - Stamps are redeemable for BCH from a **reward reserve** the shop locks up front. The shop cannot
