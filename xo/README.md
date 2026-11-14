@@ -8,8 +8,12 @@ then redeem them, with the engine building every transaction from the template.
 
 | Action | Chipnet transaction |
 |---|---|
-| `earn` | `d50bb7601c961d379b9bed0f4a02847a3b3304de9bb2e48d3ec6c3943ce8ce7a` |
-| `redeem` (follow-up) | `f6a79ac0d07af2a05a1717981e4e9b8813d5d37e7647e0d07158502af6f6396c` |
+| `earn` (20 stamps) | `293bbc45c1ecbbaa5f2fd566fbf2c548657e1dc171c08b827f5d739fcf6ace36` |
+| `redeem` (follow-up, 20 stamps) | `335bf844efa39d056eb0383625bf46b24e30ff6ea3a3e6282f36f037ec1ccdd3` |
+
+Built with `@xo-cash/engine@0.1.1-next.18029697917`. The template was first executed on
+`0.1.1-next.17778370827` (earn `d50bb760…ce8ce7a`, redeem `f6a79ac0…f6f6396c`) and re-run after the
+upgrade.
 
 ## What the template describes
 
@@ -59,10 +63,10 @@ npm run template -w xo      # writes regulars.template.json
 npm run run:chipnet -w xo   # earn, then redeem, through XO invitations
 ```
 
-The runner creates a disposable XO account (its mnemonic goes into `.env`), funds it with 30,000
-chipnet sats from the owner key, imports the P2PKH and Regulars templates, then for each action:
+The runner creates a disposable XO account (its mnemonic goes into `.env`), funds it with 60,000
+chipnet sats from the owner key when it runs low, imports the P2PKH and Regulars templates, then for each action:
 `createInvitation` → `appendInvitation` (outputs) → `addChangeToInvitation` → `signInvitation` →
-`executeAction`. Each executed invitation is serialised with `serializeInvitation` into
+`executeAction`. `redeem` spends every stamps output the account holds. Each executed invitation is serialised with `serializeInvitation` into
 `invitations/`.
 
 To inspect one in the XO debug tool (https://blaze.xo.cash), use a disposable account there,
@@ -70,13 +74,23 @@ import `regulars.template.json`, and load the invitation text.
 
 ## Limitations
 
+Re-checked on engine `0.1.1-next.18029697917`; all three still apply.
+
 - The engine only compiles unlocking bytecode for outputs its own account tracks, and there is no
-  call to track a covenant someone else created. Both covenant inputs take no signature, so the
-  runner supplies their unlocking bytecode, `OP_0 <redeem script>`, with the input. That is
-  exactly the template's `issuerEarnUnlockingBytecode` / `reserveRedeemUnlockingBytecode`.
+  call to track a covenant someone else created (`signInvitation` on the covenant input throws
+  `InputUnspentOutputUnavailableError`). Both covenant inputs take no signature, so the runner
+  supplies their unlocking bytecode, `OP_0 <redeem script>`, with the input. That is exactly the
+  template's `issuerEarnUnlockingBytecode` / `reserveRedeemUnlockingBytecode`.
+- An output locking script written as a CashAssembly evaluation that concatenates,
+  `$(<0x76a914> <merchantPkh> OP_CAT <0x88ac> OP_CAT)`, resolves to the wrong bytes
+  (`0000db1e…fd0a00` instead of `76a914bdb1e0…fda88ac`). The template writes the shop's P2PKH
+  directly as a `p2s` locking script instead, which resolves correctly.
 - The engine runs on its default IndexedDB storage, provided in Node by `fake-indexeddb`, so the
-  account's state lasts for one run. The SQLite backend in engine `0.1.1-next.17778370827` fails
-  at start-up (`State.listScriptHashes` is missing from the adapter).
+  account's state lasts for one run. The SQLite backend fails at start-up
+  (`State.listScriptHashes` is missing from the adapter).
 - `redeem` declares the reserve input as holding stamps, so it expects a reserve that has already
   been redeemed against at least once (true for the demo shops). A brand-new reserve holds no
   tokens and would need a second variant of the input.
+- A redemption must be worth more than the network fee plus the 546-sat dust limit, or
+  `addChangeToInvitation` throws `ChangeSatoshisBelowDustError`. The runner earns and redeems 20
+  stamps (600 sats) for that reason.

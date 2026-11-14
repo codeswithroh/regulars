@@ -18,7 +18,8 @@ import { ENV_PATH, demoShop, env, network, ownerWallet, protocol, withConnection
 import { regularsTemplate } from './template.js';
 
 if (network !== 'chipnet') throw new Error('This runner is for chipnet; set NETWORK=chipnet');
-const STAMPS = 2n;
+// 20 stamps redeem for 600 sats, enough that the change clears dust after the network fee.
+const STAMPS = 20n;
 const here = (path: string) => fileURLToPath(new URL(`../${path}`, import.meta.url));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const log = (...a: unknown[]) => console.log(...a);
@@ -43,21 +44,28 @@ try {
   await engine.setDefaultPolicies({ change: { templateIdentifier: p2pkhId }, receive: { templateIdentifier: p2pkhId }, address: { templateIdentifier: p2pkhId } });
   log(`Template imported: ${templateIdentifier}`);
 
-  // Fund the account from the owner key when it runs low.
-  const plainBalance = async () => (await engine.listSpendableUnspentOutputs()).filter((u) => !u.tokenCategory).reduce((s, u) => s + BigInt(u.valueSatoshis), 0n);
-  if ((await plainBalance()) < 10_000n) {
-    const receive = await engine.generateLockingBytecodeFromDefaultPolicy('receive');
-    const address = lockingBytecodeToCashAddress({ bytecode: hexToBin(receive), prefix: 'bchtest' });
-    if (typeof address === 'string') throw new Error(address);
+  // Fund the account from the owner key when it runs low. The engine tracks the receive address
+  // and syncs it in the background, so give it a moment before reading the balance.
+  const plainCoins = async () => (await engine.listSpendableUnspentOutputs()).filter((u) => !u.tokenCategory);
+  const plainBalance = async () => (await plainCoins()).reduce((s, u) => s + BigInt(u.valueSatoshis), 0n);
+  const waitForBalance = async (seconds: number) => {
+    for (let i = 0; i < seconds && (await plainBalance()) < 30_000n; i++) await sleep(1000);
+    return plainBalance();
+  };
+  const receive = await engine.generateLockingBytecodeFromDefaultPolicy('receive');
+  const address = lockingBytecodeToCashAddress({ bytecode: hexToBin(receive), prefix: 'bchtest' });
+  if (typeof address === 'string') throw new Error(address);
+  if ((await waitForBalance(8)) < 30_000n) {
     await withConnection(async (provider) => {
       const owner = ownerWallet();
       const coin = (await provider.getUtxos(owner.address)).filter((u) => !u.token).sort((a, b) => Number(b.satoshis - a.satoshis))[0];
       await new TransactionBuilder({ provider }).addInput(coin, owner.signer.unlockP2PKH())
-        .addOutput({ to: address.address, amount: 30_000n }).addOutput({ to: owner.address, amount: coin.satoshis - 30_300n }).send();
+        .addOutput({ to: address.address, amount: 60_000n }).addOutput({ to: owner.address, amount: coin.satoshis - 60_300n }).send();
     });
-    for (let i = 0; i < 30 && (await plainBalance()) < 10_000n; i++) await sleep(1000);
+    if ((await waitForBalance(60)) < 30_000n) throw new Error(`Sent 60,000 sats to ${address.address} but the XO account has not seen them after 60s`);
     log(`Funded XO account ${address.address}`);
   }
+  log(`XO account balance: ${await plainBalance()} sats`);
 
   const variables = (values: Record<string, unknown>) =>
     Object.entries(values).map(([variableIdentifier, value]) => ({ variableIdentifier, roleIdentifier: 'customer', value: value as never }));
@@ -130,7 +138,7 @@ try {
   });
   const template = (await engine.getTemplate(templateIdentifier))!;
   const earnIntent = template.start!.find((i) => i.action === 'earn')!;
-  const funding = (await engine.listSpendableUnspentOutputs()).filter((u) => !u.tokenCategory).sort((a, b) => Number(BigInt(b.valueSatoshis) - BigInt(a.valueSatoshis)))[0];
+  const funding = (await plainCoins()).sort((a, b) => Number(BigInt(b.valueSatoshis) - BigInt(a.valueSatoshis)))[0];
 
   const earn = await engine.createInvitation({
     templateIdentifier,
@@ -148,29 +156,34 @@ try {
     outputs: [{ outputIdentifier: 'issuerOutput' }, { outputIdentifier: 'shopPaymentOutput' }, { outputIdentifier: 'stampsOutput', roleIdentifier: 'customer' }],
   });
   await assertSameContract(earnId, 'issuerOutput', issuer.lockingBytecode);
-  await complete(earnId, 'earn');
+  const earnTxid = await complete(earnId, 'earn');
 
   // ---------- 2. redeem (follow-up on the stamps output) ----------
-  let stampsUtxo;
-  for (let i = 0; i < 30 && !stampsUtxo; i++) {
-    stampsUtxo = (await engine.listUnspentOutputs()).find((u) => u.tokenCategory === shop.category);
-    if (!stampsUtxo) await sleep(1000);
+  // Redeem every stamps output the account holds (earlier runs may have left some).
+  type Unspent = Awaited<ReturnType<typeof engine.listUnspentOutputs>>[number] & { tokenCategory?: string; tokenAmount?: bigint | string };
+  const stampsHeld = async () => ((await engine.listUnspentOutputs()) as Unspent[]).filter((u) => u.tokenCategory === shop.category);
+  let held: Unspent[] = [];
+  for (let i = 0; i < 30; i++) {
+    held = await stampsHeld();
+    if (held.some((u) => u.outpointTransactionHash === earnTxid)) break;
+    await sleep(1000);
   }
-  if (!stampsUtxo) throw new Error('Stamps output not visible to the XO account');
-  const [script] = await engine.listScriptHashData({ scriptHash: stampsUtxo.scriptHash });
+  if (!held.some((u) => u.outpointTransactionHash === earnTxid)) throw new Error('Stamps from earn not visible to the XO account');
+  const stampsTotal = held.reduce((sum, u) => sum + BigInt(u.tokenAmount ?? 0), 0n);
+  const [script] = await engine.listScriptHashData({ scriptHash: held[0].scriptHash });
   const lockingScript = getTemplateLockingScriptOrThrow(template, script.lockingScriptIdentifier);
   const redeemIntent = (lockingScript.roles?.[script.roleIdentifier ?? '']?.actions ?? []).find((i) => i.action === 'redeem');
   if (!redeemIntent) throw new Error('The stamps output does not offer the redeem follow-up');
-  log(`Follow-up found on ${script.lockingScriptIdentifier}: ${redeemIntent.action}`);
+  log(`Follow-up found on ${script.lockingScriptIdentifier}: ${redeemIntent.action} (${stampsTotal} stamps in ${held.length} output(s))`);
 
   const redeem = await engine.createInvitation({
     templateIdentifier,
     actionIdentifier: 'redeem',
     intent: redeemIntent,
-    variables: variables({ ...shopValues, reserveSatoshis: reserveUtxo.satoshis, reserveStamps: reserveUtxo.token?.amount ?? 0n, stamps: BigInt(stampsUtxo.tokenAmount ?? STAMPS) }),
+    variables: variables({ ...shopValues, reserveSatoshis: reserveUtxo.satoshis, reserveStamps: reserveUtxo.token?.amount ?? 0n, stamps: stampsTotal }),
     inputs: [
       { inputIdentifier: 'reserveInput', outpointTransactionHash: hexToBin(reserveUtxo.txid), outpointIndex: reserveUtxo.vout, unlockingBytecode: contractUnlock(reserve.bytecode) },
-      { outpointTransactionHash: hexToBin(stampsUtxo.outpointTransactionHash), outpointIndex: stampsUtxo.outpointIndex },
+      ...held.map((u) => ({ outpointTransactionHash: hexToBin(u.outpointTransactionHash), outpointIndex: u.outpointIndex })),
     ],
   });
   const redeemId = redeem.invitation.invitationIdentifier;
