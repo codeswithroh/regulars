@@ -8,3 +8,4 @@ server/data
 .vercel
 test-results
 .claude
+cli/data

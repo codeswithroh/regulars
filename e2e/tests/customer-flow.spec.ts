@@ -1,173 +1,147 @@
 import { test, beforeAll, afterAll, expect as check } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { expect as playwrightExpect } from '@playwright/test';
-import { WEB_PORT } from './servers.js';
 import { TransactionBuilder } from 'cashscript';
 import { DerivationPath } from '@wizardconnect/wallet';
-import { merchantWallet, prefix, reserveFor, reserveParams, withConnection } from '../../server/src/config.js';
+import { makeIssuer, makeReserve, parseShopPath, shopPath, type Shop } from '@regulars/contracts';
+import { demoShop, ownerWallet, prefix, protocol, withConnection } from '../../cli/src/config.js';
 import { TestWallet } from './test-wallet.js';
+import { WEB_PORT } from './servers.js';
 
-const merchant = merchantWallet();
-const params = reserveParams(merchant.pkhHex);
-const wallet = new TestWallet(prefix);
-const customer = wallet.address(DerivationPath.Receive, 0);
-// Coins left in the throwaway wallet are not recovered, so keep this small on mainnet.
-const START_BALANCE = BigInt(process.env.E2E_START_BALANCE ?? 30_000);
-const PAYMENT = 5_000n;
-const STAMPS = 5n; // SATS_PER_STAMP_EARNED = 1000
-
-const reserveState = () => withConnection(async (provider) => {
-  const utxos = await reserveFor(merchant.pkhHex, provider).getUtxos();
-  return {
-    sats: utxos.reduce((sum, u) => sum + u.satoshis, 0n),
-    stamps: utxos.reduce((sum, u) => sum + (u.token?.amount ?? 0n), 0n),
-  };
-});
-const customerUtxos = () => withConnection((provider) => provider.getUtxos(customer));
-const num = (n: bigint) => n.toLocaleString('en-US');
-
-const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${WEB_PORT}`;
 // Chain round-trips take seconds, so web assertions wait longer than Playwright's default 5s.
 const expect = playwrightExpect.configure({ timeout: 60_000 });
+const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${WEB_PORT}`;
 
-let paymentTxid = '';
+const owner = ownerWallet();
+const shop = demoShop();
+const fees = protocol();
+const customer = new TestWallet(prefix);
+const merchant = new TestWallet(prefix);
+const customerAddress = customer.address(DerivationPath.Receive, 0);
+// Coins left in the throwaway wallets are not recovered, so keep this small on mainnet.
+const START_BALANCE = BigInt(process.env.E2E_START_BALANCE ?? 30_000);
+const MERCHANT_BALANCE = 30_000n;
+const num = (n: bigint) => n.toLocaleString('en-US');
+
+const chain = (s: Shop) => withConnection(async (provider) => {
+  const [issuers, reserves] = await Promise.all([makeIssuer(s, fees, provider).getUtxos(), makeReserve(s, provider).getUtxos()]);
+  return {
+    stampsLeft: issuers.reduce((sum, u) => sum + (u.token?.amount ?? 0n), 0n),
+    issuerSats: issuers.reduce((sum, u) => sum + u.satoshis, 0n),
+    reserveSats: reserves.reduce((sum, u) => sum + u.satoshis, 0n),
+    reserveStamps: reserves.reduce((sum, u) => sum + (u.token?.amount ?? 0n), 0n),
+  };
+});
+const utxosAt = (address: string) => withConnection((provider) => provider.getUtxos(address));
+
 let browser: Browser;
+const extraWallets: TestWallet[] = [];
 const open = async (): Promise<Page> => (await browser.newContext({ baseURL })).newPage();
-
-beforeAll(async () => {
-  browser = await chromium.launch();
-  // Fund the throwaway customer wallet from the merchant's plain coins.
-  await withConnection(async (provider) => {
-    const coin = (await provider.getUtxos(merchant.address)).filter((u) => !u.token).sort((a, b) => Number(b.satoshis - a.satoshis))[0];
-    await new TransactionBuilder({ provider })
-      .addInput(coin, merchant.signer.unlockP2PKH())
-      .addOutput({ to: customer, amount: START_BALANCE })
-      .addOutput({ to: merchant.address, amount: coin.satoshis - START_BALANCE - 300n })
-      .send();
-  });
-});
-
-afterAll(async () => {
-  wallet.close();
-  await browser?.close();
-});
-
-test('a customer connects, pays, earns stamps and redeems them for BCH', async () => {
-  const page = await open();
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-
-  await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Get 3% back');
-  await expect(page.getByTestId('reserve')).toContainText('sats');
-  await expect(page.getByRole('button', { name: 'Redeem for BCH' })).toBeDisabled();
-
-  // Pair over the real WizardConnect relay.
+const pair = async (page: Page, wallet: TestWallet, path: string) => {
+  await page.goto(`/#${path}`);
   await page.getByRole('button', { name: 'Connect wallet' }).click();
-  const uri = await page.getByTestId('pairing').getAttribute('data-uri');
-  wallet.connect(uri!);
-  await expect(page.getByRole('button', { name: /Test Wallet · Disconnect/ })).toBeVisible();
-  await expect(page.getByTestId('balance')).toContainText(`${num(START_BALANCE)} sats`);
-  await expect(page.getByTestId('stamps')).toHaveText('0');
-
-  const before = await reserveState();
-
-  // Pay: the wallet signs, the page broadcasts and asks the shop for stamps.
-  await page.getByRole('button', { name: `${num(PAYMENT)} sats`, exact: true }).click();
-  await expect(page.getByRole('status')).toContainText(`earned ${STAMPS} stamps`);
-  await expect(page.getByTestId('stamps')).toHaveText(String(STAMPS));
-  paymentTxid = (await page.getByRole('link', { name: 'View transaction' }).getAttribute('href'))!.split('/').pop()!;
-
-  const held = (await customerUtxos()).filter((u) => u.token?.category === params.stampCategory);
-  check(held.reduce((sum, u) => sum + u.token!.amount, 0n)).toBe(STAMPS);
-
-  // Redeem through the covenant.
-  await page.getByRole('button', { name: 'Redeem for BCH' }).click();
-  await expect(page.getByRole('status')).toContainText(/Redeemed \d+ stamps for/);
-  await expect(page.getByTestId('stamps')).toHaveText('0');
-
-  const after = await reserveState();
-  check(before.sats - after.sats).toBe(STAMPS * params.satsPerStamp);
-  check(after.stamps - before.stamps).toBe(STAMPS);
-  await expect(page.getByTestId('reserve')).toHaveText(`${num(after.sats)} sats`);
-  check((await customerUtxos()).some((u) => u.token)).toBe(false);
-
-  check(wallet.signed).toHaveLength(2);
-  check(errors).toEqual([]);
-});
-
-test('the issue endpoint never rewards a payment twice and rejects bad requests', async () => {
-  const request = (await browser.newContext({ baseURL })).request;
-  check(paymentTxid).toMatch(/^[0-9a-f]{64}$/);
-  const again = await request.post(`/api/issue?txid=${paymentTxid}`);
-  check(again.status()).toBe(200);
-  check((await again.json()).issued).toEqual([]);
-
-  check((await request.post('/api/issue?txid=not-a-txid')).status()).toBe(400);
-  check((await request.get('/api/issue')).status()).toBe(405);
-});
-
-test('the page stays usable when the wallet is disconnected', async () => {
-  const page = await open();
-  await page.goto('/');
-  for (const amount of ['2,000', '5,000', '10,000']) {
-    await expect(page.getByRole('button', { name: `${amount} sats`, exact: true })).toBeDisabled();
-  }
-  await expect(page.getByText('Connect a wallet to pay.')).toBeVisible();
-  await page.getByRole('button', { name: 'Connect wallet' }).click();
-  await expect(page.getByText('Scan with your wallet to connect')).toBeVisible();
-});
-
-const pair = async (page: Page, w: TestWallet) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Connect wallet' }).click();
-  w.connect((await page.getByTestId('pairing').getAttribute('data-uri'))!);
+  wallet.connect((await page.getByTestId('pairing').getAttribute('data-uri'))!);
   await expect(page.getByRole('button', { name: /Test Wallet · Disconnect/ })).toBeVisible();
   await expect(page.getByTestId('balance')).toBeVisible();
 };
 
-test('a rejected signature shows an error and the next payment still works; stamps from several payments redeem together', async () => {
-  const page = await open();
-  await pair(page, wallet);
-  const signedBefore = wallet.signed.length;
-  const before = await reserveState();
+beforeAll(async () => {
+  browser = await chromium.launch();
+  // Fund both throwaway wallets from the owner key. The merchant's coin is deliberately not
+  // output 0, so opening a shop has to take the two-signature path.
+  await withConnection(async (provider) => {
+    const coin = (await provider.getUtxos(owner.address)).filter((u) => !u.token).sort((a, b) => Number(b.satoshis - a.satoshis))[0];
+    const withMerchant = !process.env.E2E_SKIP_MERCHANT;
+    const tx = new TransactionBuilder({ provider }).addInput(coin, owner.signer.unlockP2PKH()).addOutput({ to: customerAddress, amount: START_BALANCE });
+    if (withMerchant) tx.addOutput({ to: merchant.address(DerivationPath.Receive, 0), amount: MERCHANT_BALANCE });
+    await tx.addOutput({ to: owner.address, amount: coin.satoshis - START_BALANCE - (withMerchant ? MERCHANT_BALANCE : 0n) - 400n }).send();
+  });
+});
 
-  wallet.rejectNext = true;
+afterAll(async () => {
+  await browser?.close();
+  for (const w of [customer, merchant, ...extraWallets]) w.close();
+  await new Promise((resolve) => setTimeout(resolve, 1500)); // let relay sockets finish closing
+});
+
+test('a customer pays and receives stamps in the same transaction, then redeems them', async () => {
+  const page = await open();
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+
+  await pair(page, customer, shopPath(shop));
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(shop.name);
+  await expect(page.getByTestId('balance')).toContainText(`${num(START_BALANCE)} sats`);
+  await expect(page.getByTestId('stamps')).toHaveText('0');
+  await expect(page.getByRole('button', { name: 'Redeem for BCH' })).toBeDisabled();
+  const before = await chain(shop);
+
+  await page.getByRole('button', { name: '5,000 sats', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('earned 5 stamps in the same transaction');
+  await expect(page.getByTestId('stamps')).toHaveText('5');
+
+  // One transaction did all of it: shop paid, stamps delivered, protocol fee accrued.
+  const paymentTxid = (await page.getByRole('link', { name: 'View transaction' }).getAttribute('href'))!.split('/').pop()!;
+  const mine = await utxosAt(customerAddress);
+  check(mine.filter((u) => u.token?.category === shop.category).map((u) => [u.txid, u.token!.amount])).toEqual([[paymentTxid, 5n]]);
+  check((await utxosAt(owner.address)).some((u) => u.txid === paymentTxid && u.satoshis === 5000n - 5n * fees.feePerStamp)).toBe(true);
+  const paid = await chain(shop);
+  check(before.stampsLeft - paid.stampsLeft).toBe(5n);
+  check(paid.issuerSats - before.issuerSats).toBe(5n * fees.feePerStamp);
+
+  await page.getByRole('button', { name: 'Redeem for BCH' }).click();
+  await expect(page.getByRole('status')).toContainText(/Redeemed 5 stamps for/);
+  await expect(page.getByTestId('stamps')).toHaveText('0');
+  const after = await chain(shop);
+  check(paid.reserveSats - after.reserveSats).toBe(5n * shop.redeem);
+  check(after.reserveStamps - paid.reserveStamps).toBe(5n);
+  await expect(page.getByTestId('reserve')).toHaveText(`${num(after.reserveSats)} sats`);
+  check((await utxosAt(customerAddress)).some((u) => u.token)).toBe(false);
+  check(customer.signed).toHaveLength(2);
+  check(errors).toEqual([]);
+});
+
+test('a rejected signature charges nothing; several payments and a custom amount redeem together', async () => {
+  const page = await open();
+  await pair(page, customer, shopPath(shop));
+  const signedBefore = customer.signed.length;
+  const before = await chain(shop);
+
+  customer.rejectNext = true;
   await page.getByRole('button', { name: '2,000 sats', exact: true }).click();
   await expect(page.locator('.notice.error')).toContainText('User rejected the request');
-  check(wallet.signed).toHaveLength(signedBefore);
-  await expect(page.getByTestId('stamps')).toHaveText('0');
+  check(customer.signed).toHaveLength(signedBefore);
+  check((await chain(shop)).stampsLeft).toBe(before.stampsLeft);
 
   await page.getByRole('button', { name: '2,000 sats', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('earned 2 stamps');
-  await page.getByRole('button', { name: '5,000 sats', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('earned 5 stamps');
-  await expect(page.getByTestId('stamps')).toHaveText('7');
-  const held = (await customerUtxos()).filter((u) => u.token?.category === params.stampCategory);
-  check(held.length).toBe(2); // two separate stamp outputs, redeemed in one transaction
+  await page.getByLabel('Other amount in sats').fill('3500');
+  await page.getByRole('button', { name: 'Pay', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Paid 3,500 sats and earned 3 stamps');
+  await expect(page.getByTestId('stamps')).toHaveText('5');
 
   await page.getByRole('button', { name: 'Redeem for BCH' }).click();
-  await expect(page.getByRole('status')).toContainText(/Redeemed \d+ stamps for/);
+  await expect(page.getByRole('status')).toContainText(/Redeemed 5 stamps for/);
   await expect(page.getByTestId('stamps')).toHaveText('0');
-  const after = await reserveState();
-  check(before.sats - after.sats).toBe(7n * params.satsPerStamp);
-  check(after.stamps - before.stamps).toBe(7n);
+  const after = await chain(shop);
+  check(before.reserveSats - after.reserveSats).toBe(5n * shop.redeem);
+  check(before.stampsLeft - after.stampsLeft).toBe(5n);
 });
 
 test('a wallet without funds gets a clear message instead of a broken transaction', async () => {
   const empty = new TestWallet(prefix);
   const page = await open();
-  await pair(page, empty);
+  await pair(page, empty, shopPath(shop));
   await expect(page.getByTestId('balance')).toContainText('0 sats');
   await page.getByRole('button', { name: '2,000 sats', exact: true }).click();
   await expect(page.locator('.notice.error')).toContainText('not enough to pay');
   check(empty.signed).toHaveLength(0);
-  empty.close();
+  extraWallets.push(empty);
 });
 
 test('a wallet reconnects after a page reload without scanning again', async () => {
   const page = await open();
-  await pair(page, wallet);
+  await pair(page, customer, shopPath(shop));
   await page.reload();
   await expect(page.getByRole('button', { name: /Test Wallet · Disconnect/ })).toBeVisible();
   await expect(page.getByTestId('balance')).toBeVisible();
@@ -175,21 +149,57 @@ test('a wallet reconnects after a page reload without scanning again', async () 
   await expect(page.getByRole('button', { name: 'Connect wallet' })).toBeVisible();
 });
 
-test('if the shop cannot be reached after paying, the payment still stands and stamps are collected on the next visit', async () => {
+test.skipIf(Boolean(process.env.E2E_SKIP_MERCHANT))('a merchant opens a shop from their own wallet and a customer earns there', async () => {
   const page = await open();
-  await pair(page, wallet);
-  await expect(page.getByTestId('stamps')).toHaveText('0');
+  await pair(page, merchant, '/new');
+  await expect(page.getByTestId('summary')).toContainText('Give your shop a name');
+  await expect(page.getByRole('button', { name: 'Open shop' })).toBeDisabled();
 
-  await page.route('**/api/issue**', (route) => route.abort());
-  await page.getByRole('button', { name: '2,000 sats', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Your stamps will arrive shortly');
-  await expect(page.locator('.notice.error')).toHaveCount(0);
-  await expect(page.getByTestId('stamps')).toHaveText('0');
+  await page.getByLabel('Shop name').fill('Corner Coffee & Co');
+  await page.getByLabel('Sats spent per stamp').fill('500');
+  await page.getByLabel('Cashback %').fill('4');
+  await page.getByLabel('Reward reserve (sats)').fill('6000');
+  await expect(page.getByTestId('summary')).toContainText('redeem each for 20 sats');
+  await page.getByRole('button', { name: 'Open shop' }).click();
+  await expect(page.getByTestId('opened')).toContainText('Corner Coffee & Co is live');
+  check(merchant.signed).toHaveLength(2); // preparation + opening
 
-  // Shop is back: reconnecting triggers a sweep that rewards the earlier payment.
-  await page.unroute('**/api/issue**');
-  await page.reload();
-  await expect(page.getByTestId('stamps')).toHaveText('2');
-  await page.getByRole('button', { name: 'Redeem for BCH' }).click();
-  await expect(page.getByRole('status')).toContainText(/Redeemed 2 stamps for/);
+  const link = (await page.getByTestId('shop-link').innerText()).trim();
+  const opened = parseShopPath(new URL(link).hash.slice(1))!;
+  check(opened).toMatchObject({ name: 'Corner Coffee & Co', earn: 500n, redeem: 20n });
+  const fresh = await chain(opened);
+  check(fresh).toMatchObject({ stampsLeft: 1_000_000n, reserveSats: 6000n, issuerSats: 8000n });
+
+  // The poster carries a QR code for the same link.
+  await page.getByRole('button', { name: 'Print poster' }).click();
+  await expect(page.getByTestId('poster-qr')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Corner Coffee & Co');
+
+  // A customer who only has the link can pay the new shop and be rewarded.
+  const visitor = await open();
+  await pair(visitor, customer, shopPath(opened));
+  await expect(visitor.getByRole('heading', { level: 1 })).toHaveText('Corner Coffee & Co');
+  await visitor.getByRole('button', { name: '1,000 sats', exact: true }).click();
+  await expect(visitor.getByRole('status')).toContainText('earned 2 stamps');
+  const paidTo = merchant.address(DerivationPath.Receive, 0);
+  check((await utxosAt(paidTo)).some((u) => u.satoshis === 1000n - 2n * fees.feePerStamp)).toBe(true);
+  await visitor.getByRole('button', { name: 'Redeem for BCH' }).click();
+  await expect(visitor.getByRole('status')).toContainText(/Redeemed 2 stamps for/);
+  check((await chain(opened)).reserveSats).toBe(6000n - 40n);
+});
+
+test('the home page shows the live demo shop, and broken links are handled', async () => {
+  const page = await open();
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('real money');
+  await expect(page.getByTestId('demo-shop')).toContainText(shop.name);
+  await expect(page.getByTestId('demo-reserve')).toHaveText(`${num((await chain(shop)).reserveSats)} sats`);
+  await page.getByRole('button', { name: 'Try the demo shop' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(shop.name);
+  for (const amount of ['2,000', '5,000', '10,000']) await expect(page.getByRole('button', { name: `${amount} sats`, exact: true })).toBeDisabled();
+
+  await page.goto('/#/s/Nope/zz/zz/1/1');
+  await expect(page.locator('.notice.error')).toContainText('not a valid shop');
+  await page.goto(`/#/s/Ghost/${'ab'.repeat(32)}/${'cd'.repeat(20)}/1000/30`);
+  await expect(page.locator('.notice.error')).toContainText('No shop was found at this link');
 });

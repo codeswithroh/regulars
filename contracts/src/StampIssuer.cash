@@ -1,0 +1,57 @@
+pragma cashscript ^0.14.0;
+
+// StampIssuer: holds a shop's unissued loyalty stamps and hands them out to anyone whose
+// transaction pays the shop. Payment and reward are one atomic transaction: no server, no key.
+//
+//   stampCategory       token category of the shop's stamps (unreversed byte order)
+//   satsPerStampEarned  the customer earns one stamp per this many sats paid
+//   merchantPkh         where payments go; also the only key that can reclaim unissued stamps
+//   feePerStamp         protocol fee per stamp issued, taken out of the shop's side of the payment
+//   protocolPkh         where accrued protocol fees can be sent
+contract StampIssuer(
+    bytes32 stampCategory,
+    int satsPerStampEarned,
+    bytes20 merchantPkh,
+    int feePerStamp,
+    bytes20 protocolPkh
+) {
+    // Anyone: take N stamps by paying the shop for them in the same transaction.
+    //   output 0  this contract again, with N fewer stamps and N * feePerStamp more sats
+    //   output 1  the shop's payment, at least N * (satsPerStampEarned - feePerStamp)
+    function earn() {
+        require(this.activeInputIndex == 0, "issuer must be input 0");
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode, "issuer must be recreated at output 0");
+        require(tx.outputs[0].tokenCategory == stampCategory, "issuer must keep its stamps");
+
+        int stampsOut = tx.inputs[0].tokenAmount - tx.outputs[0].tokenAmount;
+        require(stampsOut > 0, "no stamps taken");
+        require(tx.outputs[0].value >= tx.inputs[0].value + stampsOut * feePerStamp, "protocol fee not added");
+
+        require(tx.outputs[1].lockingBytecode == new LockingBytecodeP2PKH(merchantPkh), "output 1 must pay the shop");
+        require(tx.outputs[1].value >= stampsOut * (satsPerStampEarned - feePerStamp), "shop underpaid for the stamps taken");
+    }
+
+    // Anyone: forward accrued protocol fees to the protocol address. Only allowed once enough has
+    // built up that the miner fee (at most 1,000 sats) is a small fraction of what is collected.
+    function collect() {
+        require(this.activeInputIndex == 0, "issuer must be input 0");
+        require(tx.inputs[0].value >= 20000, "not enough fees accrued to collect");
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode, "issuer must be recreated at output 0");
+        require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory, "stamps must stay");
+        require(tx.outputs[0].tokenAmount == tx.inputs[0].tokenAmount, "stamps must stay");
+        require(tx.outputs[0].value >= 1000, "issuer must stay funded");
+        require(tx.outputs[1].lockingBytecode == new LockingBytecodeP2PKH(protocolPkh), "output 1 must pay the protocol");
+        require(tx.outputs[1].value >= tx.inputs[0].value - 2000, "fees must go to the protocol");
+    }
+
+    // Shop: reclaim unissued stamps, e.g. to close the programme. Accrued fees still go to the protocol.
+    function withdraw(pubkey merchantPk, sig merchantSig) {
+        require(hash160(merchantPk) == merchantPkh, "not the shop");
+        require(checkSig(merchantSig, merchantPk), "bad shop signature");
+        require(this.activeInputIndex == 0, "issuer must be input 0");
+        if (tx.inputs[0].value > 3000) {
+            require(tx.outputs[0].lockingBytecode == new LockingBytecodeP2PKH(protocolPkh), "output 0 must pay the protocol");
+            require(tx.outputs[0].value >= tx.inputs[0].value - 2000, "accrued fees must go to the protocol");
+        }
+    }
+}

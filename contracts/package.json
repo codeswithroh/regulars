@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "compile": "cashc src/RewardReserve.cash --format ts --output artifacts/RewardReserve.artifact.ts",
+    "compile": "cashc src/RewardReserve.cash --format ts --output artifacts/RewardReserve.artifact.ts && cashc src/StampIssuer.cash --format ts --output artifacts/StampIssuer.artifact.ts",
     "test": "vitest run"
   },
   "dependencies": {

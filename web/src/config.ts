@@ -1,35 +1,23 @@
 import { Network } from 'cashscript';
-import type { ReserveParams } from '@regulars/contracts';
+import { parseShopPath, type Protocol } from '@regulars/contracts';
 
-const env = import.meta.env;
-const value = (key: string) => String(env[key] ?? '').split('#')[0].trim();
+const value = (key: string) => String(import.meta.env[key] ?? '').split('#')[0].trim();
 
 export const network = value('VITE_NETWORK') === 'mainnet' ? Network.MAINNET : Network.CHIPNET;
 export const prefix = network === Network.MAINNET ? 'bitcoincash' : 'bchtest';
 
-export const merchant = {
-  name: value('VITE_MERCHANT_NAME') || 'Demo Café',
-  address: value('VITE_MERCHANT_ADDRESS'),
-  pkh: value('VITE_MERCHANT_PKH'),
+/** Protocol-wide settings; every shop opened from this site uses them. */
+export const protocol: Protocol = {
+  feePerStamp: BigInt(value('VITE_FEE_PER_STAMP') || '10'),
+  protocolPkh: value('VITE_PROTOCOL_PKH'),
 };
+export const configured = /^[0-9a-f]{40}$/.test(protocol.protocolPkh);
 
-export const satsPerStampEarned = BigInt(value('VITE_SATS_PER_STAMP_EARNED') || '1000');
-
-export const reserveParams: ReserveParams = {
-  stampCategory: value('VITE_STAMP_CATEGORY'),
-  satsPerStamp: BigInt(value('VITE_SATS_PER_STAMP') || '30'),
-  merchantPkh: merchant.pkh,
-};
-
-/** False until the merchant has run keygen + mint and the values are in .env. */
-export const configured = Boolean(merchant.address && merchant.pkh && reserveParams.stampCategory);
+/** The shop featured on the home page. */
+export const demoShop = parseShopPath(value('VITE_DEMO_SHOP'));
 
 /** Required BLAZE banner links. */
-export const banner = {
-  deck: value('VITE_DECK_URL'),
-  repo: value('VITE_REPO_URL'),
-  donation: value('VITE_DONATION_ADDRESS'),
-};
+export const banner = { deck: value('VITE_DECK_URL'), repo: value('VITE_REPO_URL'), donation: value('VITE_DONATION_ADDRESS') };
 
 export const explorerTx = (txid: string) =>
   network === Network.MAINNET ? `https://explorer.bch.ninja/tx/${txid}` : `https://chipnet.bch.ninja/tx/${txid}`;

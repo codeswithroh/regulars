@@ -9,10 +9,11 @@
   },
   "dependencies": {
     "@bitauth/libauth": "3.1.0-next.8",
-    "@regulars/server": "*",
     "@wizardconnect/wallet": "^0.2.4",
     "cashscript": "^0.14.0",
-    "@wizardconnect/core": "^0.2.10"
+    "@wizardconnect/core": "^0.2.10",
+    "@regulars/cli": "*",
+    "@regulars/contracts": "*"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

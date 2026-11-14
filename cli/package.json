@@ -1,0 +1,18 @@
+{
+  "name": "@regulars/cli",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "shop": "tsx src/shop.ts",
+    "e2e": "tsx src/e2e.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@bitauth/libauth": "3.1.0-next.8",
+    "@regulars/contracts": "*",
+    "cashscript": "^0.14.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": { "tsx": "^4.19.0", "typescript": "^5.6.0", "@types/node": "^22.0.0" }
+}
