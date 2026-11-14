@@ -32,15 +32,16 @@
   <div class="n">1 / 7</div>
   <div class="tag">BCH BLAZE 2026 · Mainnet track</div>
   <h1>Regulars</h1>
-  <p><strong>Loyalty points that are real money.</strong></p>
+  <p><strong>Loyalty points that are real money.</strong> A loyalty protocol with no backend.</p>
   <p><a href="https://regulars-bch.vercel.app">regulars-bch.vercel.app</a><br />Built by codeswithroh</p>
 </section>
 
 <section>
   <div class="n">2 / 7</div>
   <div class="tag">What it is</div>
-  <h2>Pay in Bitcoin Cash. Get 3% back, guaranteed by a contract.</h2>
-  <p>Shops that accept BCH reward repeat customers with stamps. Stamps are redeemable for BCH from a reserve the shop funds up front and cannot take back from a customer.</p>
+  <h2>Pay a shop in Bitcoin Cash. Your reward arrives in the same transaction.</h2>
+  <p>Any shop can open a loyalty programme in one transaction from its own wallet. Customers earn stamps the instant they pay, and redeem them for BCH from a reserve the shop locks up front.</p>
+  <p><strong>Two contracts and a static web page.</strong> No server, no database, no keys held by anyone but the shop and its customers.</p>
   <p><a href="https://github.com/codeswithroh/regulars">github.com/codeswithroh/regulars</a></p>
 </section>
 
@@ -57,38 +58,38 @@
   <div class="tag">Benefits</div>
   <h2>Good for the customer, the shop and the chain</h2>
   <ul>
-    <li><strong>Customers:</strong> stamps arrive seconds after paying, show up in their own wallet, and can be redeemed, sent to a friend or traded.</li>
-    <li><strong>Shops:</strong> a loyalty programme with no card hardware, no app to install and no customer database.</li>
-    <li><strong>Bitcoin Cash:</strong> every reward is a reason to pay in BCH again, in any wallet.</li>
+    <li><strong>Customers:</strong> stamps land in their own wallet with the payment itself, and can be redeemed, sent to a friend or traded.</li>
+    <li><strong>Shops:</strong> open in about a minute. No hardware, no app, no sign-up, no customer database, and payments go straight to the shop's wallet.</li>
+    <li><strong>Bitcoin Cash:</strong> every reward is a reason to pay in BCH again.</li>
   </ul>
   <div class="row">
-    <div class="card"><b>3 clicks</b><span>connect, pay, redeem</span></div>
-    <div class="card"><b>~5 s</b><span>from payment to stamps, measured on mainnet</span></div>
-    <div class="card"><b>0</b><span>databases: the chain is the ledger</span></div>
+    <div class="card"><b>1 tx</b><span>payment and reward, inseparable</span></div>
+    <div class="card"><b>1 tx</b><span>to open a shop: mint stamps and fund the reserve</span></div>
+    <div class="card"><b>0</b><span>servers, databases or hot keys</span></div>
   </div>
 </section>
 
 <section>
   <div class="n">5 / 7</div>
   <div class="tag">BCH usage</div>
-  <h2>Three mainnet transactions, one covenant</h2>
+  <h2>Two covenants do the work a company's servers usually do</h2>
   <ol class="steps">
-    <li><strong>Pay.</strong> A plain BCH payment to the shop, signed in the customer's wallet over WizardConnect.</li>
-    <li><strong>Earn.</strong> The shop sends stamps, a CashTokens fungible token, to the paying address. Issuing spends the payment's own output, so a payment can never be rewarded twice.</li>
-    <li><strong>Redeem.</strong> The customer hands stamps to the <code>RewardReserve</code> covenant and takes BCH out. The script checks the reserve is recreated, the stamp count grew by N, and at most N × rate left.</li>
+    <li><strong>StampIssuer.</strong> Holds the shop's unissued stamps (a CashTokens fungible token). Anyone may take N stamps, but only in a transaction whose output 1 pays the shop for them. Payment and reward are atomic.</li>
+    <li><strong>RewardReserve.</strong> Holds the shop's reward BCH. Anyone handing in N stamps takes N × rate out. The shop cannot refuse.</li>
+    <li><strong>Protocol fee, enforced in script.</strong> Each issuance must leave 1% inside the issuer contract, which only the protocol treasury can collect.</li>
   </ol>
-  <p>Written in CashScript, tested on mock network, chipnet and mainnet, with browser tests that drive a headless WizardConnect wallet.</p>
+  <p>CashScript, signed in the user's wallet over WizardConnect. Tested on mock network, chipnet and mainnet, including browser tests that drive a headless WizardConnect wallet through paying, redeeming and opening a shop.</p>
 </section>
 
 <section>
   <div class="n">6 / 7</div>
   <div class="tag">The vision</div>
-  <h2>A rewards layer for every BCH merchant</h2>
+  <h2>The rewards layer for every BCH merchant</h2>
   <ul>
-    <li><strong>Now:</strong> one demo shop live on mainnet.</li>
-    <li><strong>Next:</strong> self-serve onboarding so any shop can mint stamps and fund a reserve in minutes, with a plug-in for existing BCH point-of-sale apps.</li>
-    <li><strong>Business:</strong> a monthly fee per shop or a small cut of reserve funding. The shop is paying out of card fees it no longer owes.</li>
-    <li><strong>Later:</strong> rewards priced in a BCH stablecoin, and an XO template so wallets can show and redeem stamps natively.</li>
+    <li><strong>Now:</strong> live on mainnet. Anyone can open a shop today and print its poster.</li>
+    <li><strong>Business:</strong> 1% of every rewarded payment accrues to the protocol on-chain, with no invoicing and no accounts. Shops pay it out of the roughly 3% they no longer give to card networks.</li>
+    <li><strong>Next:</strong> an XO template so wallets show and redeem stamps natively, and a plug-in for existing BCH point-of-sale apps.</li>
+    <li><strong>Later:</strong> rewards priced in a BCH stablecoin, and a public directory of shops read straight from the chain.</li>
   </ul>
 </section>
 
@@ -96,7 +97,7 @@
   <div class="n">7 / 7</div>
   <div class="tag">Thank you</div>
   <h1>Try it</h1>
-  <p><a href="https://regulars-bch.vercel.app">regulars-bch.vercel.app</a> · connect a wallet, pay 2,000 sats, redeem your stamps.</p>
+  <p><a href="https://regulars-bch.vercel.app">regulars-bch.vercel.app</a> · connect a wallet, pay 2,000 sats at the demo shop, redeem your stamps. Or open your own shop.</p>
   <p>Source: <a href="https://github.com/codeswithroh/regulars">github.com/codeswithroh/regulars</a></p>
 </section>
 

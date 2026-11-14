@@ -41,5 +41,5 @@ export default {
       enforceLocktimeGuard: true,
     },
   },
-  updatedAt: '2026-11-14T03:50:17.714Z',
+  updatedAt: '2026-11-14T03:52:41.321Z',
 } as const;
