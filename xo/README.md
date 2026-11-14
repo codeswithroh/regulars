@@ -74,7 +74,7 @@ import `regulars.template.json`, and load the invitation text.
 
 ## Limitations
 
-Re-checked on engine `0.1.1-next.18029697917`; all three still apply.
+Re-checked on engine `0.1.1-next.18029697917`.
 
 - The engine only compiles unlocking bytecode for outputs its own account tracks, and there is no
   call to track a covenant someone else created (`signInvitation` on the covenant input throws
@@ -85,9 +85,9 @@ Re-checked on engine `0.1.1-next.18029697917`; all three still apply.
   `$(<0x76a914> <merchantPkh> OP_CAT <0x88ac> OP_CAT)`, resolves to the wrong bytes
   (`0000db1e…fd0a00` instead of `76a914bdb1e0…fda88ac`). The template writes the shop's P2PKH
   directly as a `p2s` locking script instead, which resolves correctly.
-- The engine runs on its default IndexedDB storage, provided in Node by `fake-indexeddb`, so the
-  account's state lasts for one run. The SQLite backend fails at start-up
-  (`State.listScriptHashes` is missing from the adapter).
+- The engine uses IndexedDB, its supported storage; in Node it is provided by `fake-indexeddb`,
+  so the account's state lasts for one run. (The SQLite option is not supported yet, per the XO
+  team.)
 - `redeem` declares the reserve input as holding stamps, so it expects a reserve that has already
   been redeemed against at least once (true for the demo shops). A brand-new reserve holds no
   tokens and would need a second variant of the input.

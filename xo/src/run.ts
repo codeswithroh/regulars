@@ -3,8 +3,7 @@
 //   2. `redeem` the follow-up action on the stamps output, through a second invitation
 // Each invitation is saved to xo/invitations/ for the XO debug tool (https://blaze.xo.cash/).
 // Usage: npm run run:chipnet -w xo      (needs the chipnet .env from `npm run shop -- keygen/open`)
-// The engine's default storage is IndexedDB; this provides it in Node, in memory. (Its SQLite
-// backend in 0.1.1-next fails on start: State.listScriptHashes is missing from the adapter.)
+// The engine's storage is IndexedDB (SQLite is not supported yet); this provides it in Node, in memory.
 import 'fake-indexeddb/auto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
