@@ -1,0 +1,22 @@
+{
+  "name": "@regulars/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "compile": "cashc src/RewardReserve.cash --format ts --output artifacts/RewardReserve.artifact.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "cashscript": "^0.14.0",
+    "@bitauth/libauth": "3.1.0-next.8"
+  },
+  "devDependencies": {
+    "cashc": "^0.14.0",
+    "vitest": "^3.2.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@regulars/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@bitauth/libauth": "3.1.0-next.8",
+    "@regulars/server": "*",
+    "@wizardconnect/wallet": "^0.2.4",
+    "cashscript": "^0.14.0",
+    "@wizardconnect/core": "^0.2.10"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0",
+    "vitest": "^3.2.0"
+  }
+}

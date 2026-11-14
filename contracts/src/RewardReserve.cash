@@ -1,0 +1,38 @@
+pragma cashscript ^0.14.0;
+
+// RewardReserve: a merchant-funded pot of BCH that anyone can draw from by
+// handing in the merchant's loyalty "stamp" tokens.
+//
+//   stampCategory  token category of the merchant's stamps (unreversed byte order)
+//   satsPerStamp   BCH paid out for every stamp handed in
+//   merchantPkh    the only key that can top up-and-reclaim or close the reserve
+contract RewardReserve(bytes32 stampCategory, int satsPerStamp, bytes20 merchantPkh) {
+
+    // Anyone: send N stamps into the reserve, take N * satsPerStamp out.
+    // The reserve is recreated at the same output index as its input index, so
+    // several reserve UTXOs in one transaction can never share an output.
+    function redeem() {
+        int i = this.activeInputIndex;
+
+        require(tx.outputs[i].lockingBytecode == tx.inputs[i].lockingBytecode, "reserve must be recreated at the same index");
+        require(tx.outputs[i].tokenCategory == stampCategory, "reserve output must hold this merchant's stamps");
+
+        // An input holding some other token must not count toward the stamp balance.
+        int stampsBefore = 0;
+        if (tx.inputs[i].tokenCategory == stampCategory) {
+            stampsBefore = tx.inputs[i].tokenAmount;
+        } else {
+            require(tx.inputs[i].tokenCategory == 0x, "reserve input holds a foreign token");
+        }
+
+        int stampsIn = tx.outputs[i].tokenAmount - stampsBefore;
+        require(stampsIn > 0, "no stamps handed in");
+        require(tx.outputs[i].value >= tx.inputs[i].value - stampsIn * satsPerStamp, "payout exceeds stamps handed in");
+    }
+
+    // Merchant: withdraw BCH and/or collected stamps (to re-issue them).
+    function withdraw(pubkey merchantPk, sig merchantSig) {
+        require(hash160(merchantPk) == merchantPkh, "not the merchant");
+        require(checkSig(merchantSig, merchantPk), "bad merchant signature");
+    }
+}

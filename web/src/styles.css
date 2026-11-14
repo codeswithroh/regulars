@@ -1,0 +1,33 @@
+:root {
+  --bg: #fbf7f0; --ink: #1d1a16; --muted: #6f675c; --card: #ffffff; --line: #e6dccc;
+  --accent: #0a7d4f; --accent-ink: #ffffff; --error: #a3261c; --busy: #8a5a00;
+  font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink); background: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14110d; --ink: #f3ece0; --muted: #a3998a; --card: #1e1a14; --line: #362f25; --accent: #3ecf8e; --accent-ink: #06281a; --error: #ff8c80; --busy: #f0b84a; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: var(--accent); }
+.banner { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; padding: 8px 16px; font-size: 13px; background: var(--ink); color: var(--bg); }
+.banner a { color: inherit; }
+.banner code { font-size: 12px; word-break: break-all; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 16px; max-width: 980px; margin: 0 auto; }
+.brand { font-weight: 800; font-size: 22px; letter-spacing: -0.02em; }
+.brand small { font-weight: 500; font-size: 13px; color: var(--muted); }
+main { max-width: 980px; margin: 0 auto; padding: 0 16px 64px; }
+.hero h1 { font-size: clamp(32px, 7vw, 56px); line-height: 1.02; letter-spacing: -0.03em; margin: 24px 0 12px; }
+.hero p { font-size: 18px; color: var(--muted); max-width: 56ch; margin: 0 0 28px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px; }
+.card h2 { font-size: 15px; margin: 0 0 8px; }
+.big { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); font-size: 14px; margin: 8px 0 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: inherit; font-weight: 700; padding: 10px 16px; border-radius: 999px; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.notice { margin: 20px 0 0; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); }
+.notice.error { color: var(--error); }
+.notice.busy { color: var(--busy); }

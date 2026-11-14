@@ -1,0 +1,25 @@
+{
+  "name": "regulars",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "contracts",
+    "server",
+    "web",
+    "e2e"
+  ],
+  "scripts": {
+    "compile": "npm run compile -w contracts",
+    "test": "npm test -w contracts",
+    "dev": "npm run dev -w web",
+    "build": "npm run compile && npm run build -w web",
+    "issuer": "npm start -w server",
+    "test:e2e": "npm test -w e2e",
+    "api": "npm run api -w server",
+    "vercel-build": "node scripts/vercel-build.mjs",
+    "deploy": "node scripts/vercel-build.mjs && vercel deploy --prebuilt --prod"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
