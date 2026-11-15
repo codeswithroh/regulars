@@ -23,3 +23,9 @@ img, svg { display: block; }
 .boot { min-height: 100vh; }
 .boot.app { background: #f3f4f6; }
 .boot.land { background: #f6efe6; }
+
+/* Logo: the seal turns a notch on hover, the r stays put. */
+.rg-logo { flex: none; overflow: visible; }
+.rg-logo .rg-seal { transform-origin: 32px 32px; transition: transform .9s cubic-bezier(.2,.8,.2,1); }
+a:hover > .rg-logo .rg-seal { transform: rotate(36deg); }
+@media (prefers-reduced-motion: reduce) { .rg-logo .rg-seal { transition: none; } }

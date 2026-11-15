@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeftRight, BarChart3, ChevronsUpDown, ExternalLink, Home, LayoutGrid, LogOut, Plus, Store, Wallet, Ticket } from 'lucide-react';
+import { ArrowLeftRight, BarChart3, ChevronsUpDown, ExternalLink, Home, LayoutGrid, LogOut, Plus, Store, Wallet } from 'lucide-react';
 import { Banner } from '../components/Banner';
 import { network } from '../config';
 import { Avatar, shortAddr } from '../components/kit';
+import { Logo } from '../components/Logo';
 import { useKnownShops, useWallet, useWalletConnection } from '../ui';
 
 import type { AppPage as Page } from '../route';
@@ -64,7 +65,7 @@ export function Shell({ page, children }: { page: Page; children: ReactNode }) {
       <Banner />
       <div className="shell">
         <aside className="side">
-          <a className="brand" href="#/"><span className="brand-mark"><Ticket size={18} /></span>Regulars</a>
+          <a className="brand" href="#/"><Logo size={34} />Regulars</a>
           {NAV.map((g) => (
             <nav key={g.group} aria-label={g.group}>
               <div className="side-label">{g.group}</div>

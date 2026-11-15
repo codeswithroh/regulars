@@ -12,7 +12,7 @@
 .l-nav { position: sticky; top: 0; z-index: 30; transition: background .3s, box-shadow .3s, backdrop-filter .3s; }
 .l-nav.scrolled { background: rgba(246, 239, 230, .82); backdrop-filter: blur(14px) saturate(1.3); box-shadow: 0 1px 0 var(--line); }
 .l-nav .wrap { display: flex; align-items: center; gap: 18px; height: 72px; }
-.logo { font-weight: 700; font-size: 22px; letter-spacing: -.04em; text-decoration: none; color: var(--ink); }
+.logo { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 22px; letter-spacing: -.04em; text-decoration: none; color: var(--ink); }
 .logo i { color: var(--orange); font-style: normal; }
 .pills { position: relative; display: flex; gap: 2px; padding: 4px; margin: 0 auto; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); }
 .pills a { position: relative; z-index: 1; padding: 8px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 500; text-decoration: none; color: var(--ink); transition: color .3s; }

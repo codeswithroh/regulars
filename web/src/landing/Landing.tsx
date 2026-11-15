@@ -8,6 +8,7 @@ import { statsOf } from '../stats';
 import type { ShopEvent } from '../history';
 import type { ShopState } from '../wallet';
 import { CountUp, LoyaltyCard, ago, fmt } from '../components/kit';
+import { Logo } from '../components/Logo';
 import { go, rememberShop } from '../nav';
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -71,7 +72,7 @@ function Nav({ reserve }: { reserve?: bigint }) {
   return (
     <header className={`l-nav${scrolled ? ' scrolled' : ''}`}>
       <div className="wrap">
-        <a className="logo" href="#/">regulars<i>.</i></a>
+        <a className="logo" href="#/"><Logo size={30} /><span>regulars<i>.</i></span></a>
         <div className="pills" ref={pillsRef}>
           <span className="glide" style={glide} />
           {SECTIONS.map(([id, label]) => <a key={id} data-id={id} href={`#/`} onClick={jump(id)} className={active === id ? 'on' : ''}>{label}</a>)}
@@ -498,7 +499,7 @@ export function Landing() {
         <div className="wrap">
           <div className="foot-grid">
             <div>
-              <a className="logo" href="#/">regulars<i>.</i></a>
+              <a className="logo" href="#/"><Logo size={40} /><span>regulars<i>.</i></span></a>
               <p>Loyalty points that are real money. Built on Bitcoin Cash for BCH BLAZE 2026.</p>
             </div>
             <div><h4>App</h4><ul><li><a href="#/app">Dashboard</a></li><li><a href="#/app/new">Open a shop</a></li>{demoShop && <li><a href={`#${shopPath(demoShop)}`}>Demo café</a></li>}</ul></div>
