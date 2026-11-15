@@ -7,7 +7,8 @@
     "shop": "tsx src/shop.ts",
     "e2e": "tsx src/e2e.ts",
     "typecheck": "tsc -p .",
-    "check-tx": "tsx src/check-tx.ts"
+    "check-tx": "tsx src/check-tx.ts",
+    "send-test": "tsx src/send-test.ts"
   },
   "dependencies": {
     "@bitauth/libauth": "3.1.0-next.8",

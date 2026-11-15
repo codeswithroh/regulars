@@ -116,34 +116,54 @@ function pickCoins(wallet: WalletState, needed: bigint, exclude?: WalletUtxo): W
   return chosen;
 }
 
-/** Pay the shop and receive the stamps in the same transaction. */
-export async function payAndEarn(manager: DappConnectionManager, wallet: WalletState, shop: Shop, state: ShopState, pay: bigint) {
+function planEarn(wallet: WalletState, shop: Shop, state: ShopState, pay: bigint) {
   const usable = state.issuers.filter((u) => u.token!.amount > pay / shop.earn);
   if (!usable.length) throw new Error('This shop has run out of stamps to give');
   // Issuer outputs are interchangeable; a random pick keeps simultaneous customers apart.
   const issuerUtxo = usable[Math.floor(Math.random() * usable.length)];
   const coins = pickCoins(wallet, pay + 2000n);
   if (!coins.length) throw new Error(`Your wallet holds ${wallet.bch} sats, not enough to pay ${pay}`);
-  const { builder, plan } = buildEarn({
+  const built = buildEarn({
     shop, protocol, issuerUtxo, coins: coins.map(asCoin), pay,
     customerAddress: coins[0].address, customerTokenAddress: coins[0].tokenAddress, provider,
   });
+  return { ...built, coins };
+}
+
+/** What paying would cost, without asking the wallet for anything. */
+export function previewEarn(wallet: WalletState, shop: Shop, state: ShopState, pay: bigint) {
+  try { return planEarn(wallet, shop, state, pay).plan; } catch { return undefined; }
+}
+
+/** Pay the shop and receive the stamps in the same transaction. */
+export async function payAndEarn(manager: DappConnectionManager, wallet: WalletState, shop: Shop, state: ShopState, pay: bigint) {
+  const { builder, plan, coins } = planEarn(wallet, shop, state, pay);
   // Input 0 is the issuer contract, which needs no signature.
   const txid = await signAndSend(manager, builder, coins.map((c, i) => pathOf(c, i + 1)), `Pay ${pay} sats to ${shop.name} and earn ${plan.stamps} stamps`);
   return { txid, plan };
 }
 
-/** Hand every stamp held to the reserve and take the BCH. */
-export async function redeemStamps(manager: DappConnectionManager, wallet: WalletState, shop: Shop, state: ShopState) {
+function planRedeem(wallet: WalletState, shop: Shop, state: ShopState) {
   if (!state.reserveUtxo) throw new Error('The reward reserve is empty');
   const held = wallet.utxos.filter((u) => isStamp(u, shop));
   const stamps = held.reduce((sum, u) => sum + u.token!.amount, 0n);
   if (stamps === 0n) throw new Error('No stamps to redeem yet');
-  const { builder, plan } = buildRedeem({
+  const built = buildRedeem({
     shop, reserveUtxo: state.reserveUtxo, stampInputs: held.map(asCoin), stamps,
     customerAddress: held[0].address, customerTokenAddress: held[0].tokenAddress, provider,
   });
-  const txid = await signAndSend(manager, builder, held.map((u, i) => pathOf(u, i + 1)), `Redeem ${stamps} stamps for ${plan.payout} sats`);
+  return { ...built, held, deposit: held.reduce((sum, u) => sum + u.satoshis, 0n) };
+}
+
+/** What redeeming every stamp would return, without asking the wallet for anything. */
+export function previewRedeem(wallet: WalletState, shop: Shop, state: ShopState) {
+  try { const { plan, deposit } = planRedeem(wallet, shop, state); return { ...plan, deposit }; } catch { return undefined; }
+}
+
+/** Hand every stamp held to the reserve and take the BCH. */
+export async function redeemStamps(manager: DappConnectionManager, wallet: WalletState, shop: Shop, state: ShopState) {
+  const { builder, plan, held } = planRedeem(wallet, shop, state);
+  const txid = await signAndSend(manager, builder, held.map((u, i) => pathOf(u, i + 1)), `Redeem ${plan.stamps} stamps for ${plan.payout} sats`);
   return { txid, plan };
 }
 

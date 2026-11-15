@@ -24,6 +24,20 @@ const MAX_TXS = 120;
 const txCache = new Map<string, Promise<Transaction>>();
 const timeCache = new Map<number, Promise<number>>();
 const firstSeen = new Map<string, number>();
+/** When a mempool transaction was first seen, kept across reloads so it doesn't read "now" forever. */
+function seenAt(txid: string): number {
+  let t = firstSeen.get(txid);
+  if (t === undefined) {
+    const key = `regulars:seen:${txid}`;
+    try { t = Number(localStorage.getItem(key)) || undefined; } catch { /* storage unavailable */ }
+    if (t === undefined) {
+      t = Math.floor(Date.now() / 1000);
+      try { localStorage.setItem(key, String(t)); } catch { /* storage unavailable */ }
+    }
+    firstSeen.set(txid, t);
+  }
+  return t;
+}
 
 function getTx(txid: string) {
   let cached = txCache.get(txid);
@@ -91,8 +105,7 @@ export async function shopHistory(shop: Shop): Promise<ShopEvent[]> {
     const tx = await getTx(txid);
     const height = heights.get(txid)!;
     const pending = height <= 0;
-    if (pending && !firstSeen.has(txid)) firstSeen.set(txid, Math.floor(Date.now() / 1000));
-    const time = pending ? firstSeen.get(txid)! : await blockTime(height);
+    const time = pending ? seenAt(txid) : await blockTime(height);
     const unlock = tx.inputs.map((input) => binToHex(input.unlockingBytecode));
     const issuerIn = unlock.findIndex((u) => u.includes(issuer.bytecode));
     const reserveIn = unlock.findIndex((u) => u.includes(reserve.bytecode));

@@ -17,7 +17,7 @@ describe('FailoverProvider', () => {
 
   it('passes network rejections straight through without switching servers', async () => {
     const switches: string[] = [];
-    const provider = new FailoverProvider(Network.CHIPNET, ['chipnet.bch.ninja', 'chipnet.imaginary.cash']);
+    const provider = new FailoverProvider(Network.CHIPNET, ['chipnet.bch.ninja', 'chipnet.bch.ninja']);
     provider.onSwitch = (host) => switches.push(host);
     // A real, already-mined transaction: rebroadcasting it must not be retried elsewhere.
     const raw = await provider.getRawTransaction(TXID);

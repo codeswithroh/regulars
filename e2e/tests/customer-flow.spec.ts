@@ -92,7 +92,7 @@ test('a customer pays and receives stamps in the same transaction, then redeems 
   await expect(page.getByTestId('stamps')).toHaveText('0');
   const before = await chain(shop);
 
-  await payWith(page, '5,000');
+  await payWith(page, '5,000', true);
   await expect(page.getByRole('status')).toContainText('earned 5 stamps in the same transaction');
   await expect(page.getByTestId('stamps')).toHaveText('5');
 
@@ -124,12 +124,12 @@ test('a rejected signature charges nothing; several payments and a custom amount
   const before = await chain(shop);
 
   customer.rejectNext = true;
-  await payWith(page, '2,000');
+  await payWith(page, '2,000', true);
   await expect(page.locator('.notice.error')).toContainText('User rejected the request');
   check(customer.signed).toHaveLength(signedBefore);
   check((await chain(shop)).stampsLeft).toBe(before.stampsLeft);
 
-  await payWith(page, '2,000');
+  await payWith(page, '2,000', true);
   await expect(page.getByRole('status')).toContainText('earned 2 stamps');
   await payWith(page, '3,500', true);
   await expect(page.getByRole('status')).toContainText('Paid 3,500 sats and earned 3 stamps');
@@ -148,7 +148,7 @@ test('a wallet without funds gets a clear message instead of a broken transactio
   const page = await open();
   await pair(page, empty, shopPath(shop));
   await expect(page.getByTestId('balance')).toContainText('Balance 0 sats');
-  await payWith(page, '2,000');
+  await payWith(page, '2,000', true);
   await expect(page.locator('.notice.error')).toContainText('not enough to pay');
   check(empty.signed).toHaveLength(0);
   extraWallets.push(empty);
@@ -206,7 +206,7 @@ test.skipIf(Boolean(process.env.E2E_SKIP_MERCHANT))('a merchant opens a shop fro
   const visitor = await open();
   await pair(visitor, customer, shopPath(opened));
   await expect(visitor.getByRole('heading', { level: 1 })).toHaveText('Corner Coffee & Co');
-  await payWith(visitor, '1,000');
+  await payWith(visitor, '1,000', true);
   await expect(visitor.getByRole('status')).toContainText('earned 2 stamps');
   const paidTo = merchant.address(DerivationPath.Receive, 0);
   check((await utxosAt(paidTo)).some((u) => u.satoshis === 1000n - 2n * fees.feePerStamp)).toBe(true);

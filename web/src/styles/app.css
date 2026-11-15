@@ -167,31 +167,6 @@
 .heat-row span:hover { transform: scale(1.25); position: relative; z-index: 2; }
 .heat .hx { display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 4px; font-size: 10.5px; color: var(--muted); text-align: center; }
 
-/* Loyalty card (ref: credit card art) */
-.lcard { container-type: inline-size; position: relative; aspect-ratio: 1.6; border-radius: 18px; padding: 18px; overflow: hidden; color: var(--art); background: var(--paper); transform-style: preserve-3d; transition: transform .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s; box-shadow: 0 1px 1px rgba(0,0,0,.04), 0 10px 30px -12px rgba(0,0,0,.25); text-decoration: none; display: block; }
-.lcard .l-art { position: absolute; inset: 0; pointer-events: none; }
-.lcard .l-top { position: relative; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.lcard .l-name { font-weight: 700; font-size: 15px; letter-spacing: -.01em; color: var(--art); max-width: 52%; line-height: 1.2; }
-.lcard .l-no { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: var(--art); opacity: .9; }
-.lcard .l-bottom { position: absolute; left: 18px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
-.lcard .l-count { font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1; color: var(--art); }
-.lcard .l-count small { display: block; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; opacity: .7; margin-top: 4px; }
-.lcard .l-dots { display: grid; grid-template-columns: repeat(5, 12px); gap: 5px; }
-.lcard .l-dots i { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--art); opacity: .45; transition: background .4s, opacity .4s, transform .4s; }
-.lcard .l-dots i.on { background: var(--art); opacity: 1; transform: scale(1.05); }
-.lcard.sm { border-radius: 14px; padding: 14px; }
-.lcard.sm .l-name { font-size: 13.5px; }
-.lcard.sm .l-count { font-size: 22px; }
-.lcard.sm .l-bottom { left: 14px; bottom: 12px; gap: 7px; }
-.lcard.sm .l-dots { grid-template-columns: repeat(5, 9px); gap: 4px; }
-.lcard.sm .l-dots i { width: 9px; height: 9px; }
-.lcard.add { display: grid; place-items: center; background: transparent; border: 1.5px dashed var(--line-2); box-shadow: none; color: var(--muted); }
-.lcard.add:hover { border-color: var(--accent); color: var(--accent); }
-@container (max-width: 210px) {
-  .lcard .l-dots { display: none; }
-  .lcard .l-name { font-size: 12px; max-width: 58%; }
-  .lcard .l-count { font-size: 20px; }
-}
 .cards-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 
 /* Pay page (ref: checkout) */
@@ -229,6 +204,8 @@
 .total { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; font-weight: 500; }
 .total b { font-size: 26px; font-weight: 700; letter-spacing: -.03em; }
 .redeem-panel { display: grid; gap: 20px; justify-items: start; }
+/* A stamp card sizes to its container, so give it one in the left-aligned redeem panel. */
+.redeem-panel .lcard { width: min(300px, 100%); }
 .big-count { font-size: 64px; font-weight: 700; letter-spacing: -.05em; line-height: 1; }
 
 /* Shop tiles */

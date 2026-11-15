@@ -6,7 +6,9 @@ import { hashTransaction, hexToBin } from '@bitauth/libauth';
 
 export const ELECTRUM_HOSTS: Record<string, string[]> = {
   [Network.MAINNET]: ['bch.imaginary.cash', 'electrum.imaginary.cash', 'cashnode.bch.ninja', 'fulcrum.greyh.at'],
-  [Network.CHIPNET]: ['chipnet.bch.ninja', 'chipnet.imaginary.cash'],
+  // chipnet.imaginary.cash is left out: it answers but returns no token-carrying outputs, which
+  // makes every shop look empty. Each server here was checked against the live contracts.
+  [Network.CHIPNET]: ['chipnet.bch.ninja'],
 };
 
 /** Errors that mean "the network said no", which no other server would answer differently. */

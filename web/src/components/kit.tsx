@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Check, Loader2, Plus, X, AlertCircle } from 'lucide-react';
 import { explorerTx } from '../config';
+import '../styles/card.css';
 
 export const PALETTES = [
   { paper: '#d9defb', art: '#3d4a8a', tile: 'lavender' },
@@ -26,6 +27,8 @@ export function CountUp({ value, duration = 900, format = fmt }: { value: number
   const [shown, setShown] = useState(value);
   const from = useRef(value);
   useEffect(() => {
+    // Hidden tabs get no animation frames; show the value outright there and for reduced motion.
+    if (document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) { setShown(value); from.current = value; return; }
     const start = performance.now(); const a = from.current; const b = value;
     let raf = 0;
     const tick = (t: number) => {
@@ -34,7 +37,9 @@ export function CountUp({ value, duration = 900, format = fmt }: { value: number
       if (k < 1) raf = requestAnimationFrame(tick); else from.current = b;
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    // Some embedded or throttled views never deliver frames; land on the value regardless.
+    const land = setTimeout(() => { cancelAnimationFrame(raf); setShown(b); from.current = b; }, duration + 100);
+    return () => { cancelAnimationFrame(raf); clearTimeout(land); };
   }, [value, duration]);
   return <span className="num">{format(Math.round(shown))}</span>;
 }

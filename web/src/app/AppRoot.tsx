@@ -1,4 +1,5 @@
-import { useWizardConnect, WizardConnectQRDialog } from '@wizardconnect/react';
+import { useEffect, useState } from 'react';
+import { useWizardConnect, WizardConnectQRDialog, type UseWizardConnectResult } from '@wizardconnect/react';
 import type { Shop } from '@regulars/contracts';
 import '../styles/app.css';
 import type { AppPage } from '../route';
@@ -13,7 +14,7 @@ import { NewShop } from './NewShop';
 
 /** The dashboard: wallet connection plus every app page. */
 export function AppRoot({ page, shop, path }: { page: AppPage; shop?: Shop; path: string }) {
-  const wc = useWizardConnect({ dappName: 'Regulars' });
+  const wc = useResumableConnection(useWizardConnect({ dappName: 'Regulars' }));
   return (
     <WalletContext.Provider value={wc}>
       {wc.uri && wc.qrUri && <div data-testid="pairing" data-uri={wc.uri} hidden />}
@@ -32,4 +33,26 @@ export function AppRoot({ page, shop, path }: { page: AppPage; shop?: Shop; path
       </Shell>
     </WalletContext.Provider>
   );
+}
+
+/**
+ * After a reload the hook resumes the stored session in the `connecting` state, and `connect()` refuses
+ * until the wallet answers. If the wallet is closed, every Connect button would stay disabled. After a
+ * short grace period the connection reads as idle, and Connect drops the old session and pairs anew.
+ */
+function useResumableConnection(raw: UseWizardConnectResult): UseWizardConnectResult {
+  const resuming = raw.state === 'connecting' && !raw.uri;
+  const [stale, setStale] = useState(false);
+  const [pairNext, setPairNext] = useState(false);
+  useEffect(() => {
+    if (!resuming) { setStale(false); return; }
+    const t = setTimeout(() => setStale(true), 6000);
+    return () => clearTimeout(t);
+  }, [resuming]);
+  // connect() reads the state from its own render, so it runs once disconnect() has made it idle.
+  useEffect(() => {
+    if (pairNext && raw.state === 'idle') { setPairNext(false); raw.connect(); }
+  }, [pairNext, raw.state, raw.connect]);
+  if (!stale) return raw;
+  return { ...raw, state: 'idle', connect: () => { setPairNext(true); void raw.disconnect(); return true; } };
 }

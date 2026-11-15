@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CreditCard, Gift, ShieldCheck, Stamp, Store, Wallet as WalletIcon, QrCode, BarChart3 } from 'lucide-react';
+import { AlertTriangle, CreditCard, Gift, ShieldCheck, Stamp, Store, Wallet as WalletIcon, QrCode, BarChart3 } from 'lucide-react';
 import { shopPath, type Shop } from '@regulars/contracts';
 import { protocol } from '../config';
-import { payAndEarn, readShop, readWallet, redeemStamps } from '../wallet';
+import { payAndEarn, previewEarn, previewRedeem, readShop, readWallet, redeemStamps } from '../wallet';
 import { Ring } from '../components/charts';
 import { Avatar, CountUp, LoyaltyCard, Toast, fmt, sats } from '../components/kit';
 import { FirstVisitHint } from '../components/FirstVisitHint';
 import { rememberShop, stampsOf, useAction, useShopState, useWallet, useWalletConnection } from '../ui';
 
-const PRESETS = [2n, 5n, 10n];
+// Stamps per preset. At demo sizes the 1 sat/byte network fee is a real share of the cashback,
+// so presets start at 10 stamps to keep a redemption worth more than its fee.
+const PRESETS = [10n, 25n, 50n];
 
 export function ShopPay({ shop }: { shop: Shop }) {
   const wc = useWalletConnection();
@@ -28,6 +30,9 @@ export function ShopPay({ shop }: { shop: Shop }) {
   const ready = Boolean(manager && wallet && state);
   const percent = Number((shop.redeem * 10000n) / shop.earn) / 100;
   const coverage = state && state.reserve > 0n ? Number(state.reserve / shop.redeem) : 0;
+  // Exact figures from the transaction that would be built (no wallet request involved).
+  const earnPreview = wallet && state && earned > 0n ? previewEarn(wallet, shop, state, pay) : undefined;
+  const redeemPreview = wallet && state && stamps > 0n ? previewRedeem(wallet, shop, state) : undefined;
   const missingShop = state && state.issuers.length === 0;
 
   const doPay = () => run('Approve the payment in your wallet…', async () => {
@@ -104,7 +109,17 @@ export function ShopPay({ shop }: { shop: Shop }) {
             <div className="redeem-panel">
               <div className="big-count num" data-testid="stamps"><CountUp value={Number(stamps)} /></div>
               <LoyaltyCard name={shop.name} category={shop.category} stamps={stamps} size="sm" tilt={false} />
-              <div className="kpi" style={{ fontSize: 22 }}>+{fmt(stamps * shop.redeem)} <small>sats</small></div>
+              <div className="summary" style={{ width: '100%', maxWidth: 360, background: '#f7f7f8' }} data-testid="redeem-breakdown">
+                <div className="sum-row"><span>Cashback</span><b className="num plus">+{sats(stamps * shop.redeem)}</b></div>
+                <div className="sum-row"><span>Deposit back</span><b className="num">{redeemPreview ? '+' + sats(redeemPreview.deposit) : '…'}</b></div>
+                <div className="sum-row"><span>Network fee</span><b className="num">−{redeemPreview ? sats(redeemPreview.fee) : '…'}</b></div>
+                <div className="sum-row"><span>You receive</span><b className="num">{redeemPreview ? sats(redeemPreview.payout) : '…'}</b></div>
+              </div>
+              {redeemPreview && redeemPreview.reward < redeemPreview.fee && (
+                <p className="pill warn" style={{ padding: '8px 12px', borderRadius: 10, margin: 0 }} data-testid="fee-warning">
+                  <AlertTriangle size={14} />The network fee is more than this cashback. Collect a few more stamps first.
+                </p>
+              )}
               {manager
                 ? <button className="btn lg accent" disabled={!ready || stamps === 0n || busy || !state?.reserveUtxo} onClick={doRedeem}><Gift size={18} />Redeem {fmt(stamps)} stamps</button>
                 : <button className="btn lg accent" onClick={() => wc.connect()}><WalletIcon size={18} />Connect wallet</button>}
@@ -122,7 +137,8 @@ export function ShopPay({ shop }: { shop: Shop }) {
             <div className="sum-row"><span>You pay</span><b className="num">{sats(pay)}</b></div>
             <div className="sum-row"><span>Shop receives</span><b className="num">{sats(pay - fee)}</b></div>
             <div className="sum-row"><span>Protocol fee</span><b className="num">{sats(fee)}</b></div>
-            <div className="sum-row"><span>Stamp output</span><b className="num">1,000 sats</b></div>
+            <div className="sum-row"><span>Network fee</span><b className="num">{earnPreview ? sats(earnPreview.fee) : '≈ 700 sats'}</b></div>
+            <div className="sum-row"><span>Stamp deposit <small className="muted">· back when you redeem</small></span><b className="num">1,000 sats</b></div>
             <div className="sum-row"><span>Cashback value</span><b className="num">{sats(earned * shop.redeem)}</b></div>
           </div>
           <div className="total"><span>You earn</span><b className="num">+{fmt(earned)} <Stamp size={20} style={{ display: 'inline', verticalAlign: '-3px' }} /></b></div>

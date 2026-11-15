@@ -39,11 +39,11 @@ export const makeReserve = (shop: Shop, provider: NetworkProvider) =>
   new Contract(reserveArtifact, [unreversed(shop.category), shop.redeem, shop.merchantPkh], { provider });
 
 /** Build once with a throwaway fee to learn the size, then again with the real fee. */
-function withFee(assemble: (fee: bigint) => TransactionBuilder, probeFee: bigint, coins: Coin[], feePerByte = 1n) {
+function withFee(assemble: (fee: bigint) => TransactionBuilder, probeFee: bigint, coins: Coin[], probeHasAllOutputs = false, feePerByte = 1n) {
   if (probeFee < 0n) assemble(0n); // not enough funds: let the builder raise its own clear message
   const unsigned = BigInt(coins.filter(({ unlocker }) => 'placeholder' in unlocker).length);
-  // The probe spends everything as fee, so it has no change output; allow for one.
-  const size = BigInt(assemble(probeFee).build().length / 2) + unsigned * PLACEHOLDER_INPUT_BYTES + CHANGE_OUTPUT_BYTES;
+  // A probe that spends everything as fee has no change output; allow for one unless it already has every output.
+  const size = BigInt(assemble(probeFee).build().length / 2) + unsigned * PLACEHOLDER_INPUT_BYTES + (probeHasAllOutputs ? 0n : CHANGE_OUTPUT_BYTES);
   const fee = size * feePerByte + 10n;
   return { builder: assemble(fee), fee };
 }
@@ -192,7 +192,7 @@ export function buildRedeem(opts: {
   };
   let sized;
   try {
-    sized = withFee(assemble, available - BCH_DUST, stampInputs);
+    sized = withFee(assemble, available - BCH_DUST, stampInputs, true);
   } catch {
     throw new Error('This redemption is too small to cover the network fee');
   }
@@ -206,7 +206,7 @@ export function buildCollect(opts: { shop: Shop; protocol: Protocol; issuerUtxo:
     .addInput(opts.issuerUtxo, issuer.unlock.collect())
     .addOutput({ to: issuer.tokenAddress, amount: TOKEN_DUST, token: opts.issuerUtxo.token })
     .addOutput({ to: p2pkh(opts.protocol.protocolPkh), amount: opts.issuerUtxo.satoshis - TOKEN_DUST - fee });
-  return withFee(assemble, 900n, []);
+  return withFee(assemble, 900n, [], true);
 }
 
 export { shopPath, parseShopPath } from './links.js';
