@@ -1,15 +1,14 @@
 // Everything that touches the chain. There is no backend: the page talks to an Electrum server
 // and asks the connected wallet to sign.
-import { ElectrumNetworkProvider, TransactionBuilder, placeholderP2PKHUnlocker, type SpendableUtxo } from 'cashscript';
+import { TransactionBuilder, placeholderP2PKHUnlocker, type SpendableUtxo } from 'cashscript';
 import { hash160, encodeCashAddress, stringify, binToHex } from '@bitauth/libauth';
 import type { DappConnectionManager } from '@wizardconnect/dapp';
-import { makeIssuer, makeReserve, buildCreateShop, buildEarn, buildRedeem, BCH_DUST, PLACEHOLDER_INPUT_BYTES, type Shop, type Coin } from '@regulars/contracts';
+import { makeIssuer, makeReserve, buildCreateShop, buildEarn, buildRedeem, FailoverProvider, BCH_DUST, PLACEHOLDER_INPUT_BYTES, type Shop, type Coin } from '@regulars/contracts';
 import { network, prefix, protocol } from './config';
 
-// One long-lived Electrum connection for the page, rather than a new socket per request.
-export const provider = new ElectrumNetworkProvider(network, { manualConnectionManagement: true });
-let connecting: Promise<void> | undefined;
-export const online = () => (connecting ??= provider.connect().catch((error) => { connecting = undefined; throw error; }));
+// One connection for the page, with automatic failover across several Electrum servers.
+export const provider = new FailoverProvider(network);
+export const online = () => provider.ready();
 
 /** How many addresses to look at on each of the wallet's receive and change paths. */
 const ADDRESSES_PER_PATH = 10;

@@ -5,6 +5,7 @@ import { protocol } from '../config';
 import { payAndEarn, readShop, readWallet, redeemStamps } from '../wallet';
 import { Ring } from '../components/charts';
 import { Avatar, CountUp, LoyaltyCard, Toast, fmt, sats } from '../components/kit';
+import { FirstVisitHint } from '../components/FirstVisitHint';
 import { rememberShop, stampsOf, useAction, useShopState, useWallet, useWalletConnection } from '../ui';
 
 const PRESETS = [2n, 5n, 10n];
@@ -49,6 +50,7 @@ export function ShopPay({ shop }: { shop: Shop }) {
 
   return (
     <>
+      <FirstVisitHint connected={Boolean(manager)} stamps={stamps} />
       <section className="pay fade-in">
         <div className="pay-main">
           <div className="pay-head">

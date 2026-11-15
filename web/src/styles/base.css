@@ -18,3 +18,8 @@ img, svg { display: block; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Shown for the instant a page chunk is loading. */
+.boot { min-height: 100vh; }
+.boot.app { background: #f3f4f6; }
+.boot.land { background: #f6efe6; }

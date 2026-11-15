@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Printer, ArrowLeft } from 'lucide-react';
 import { shopPath, type Shop } from '@regulars/contracts';
+import '../styles/landing.css';
 import { fmt } from '../components/kit';
 
 export function Poster({ shop }: { shop: Shop }) {

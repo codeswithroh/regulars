@@ -1,13 +1,38 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Github, Heart, Lock, Plus, ShieldCheck, Sparkles, Stamp, Store, Zap } from 'lucide-react';
-import { shopPath } from '@regulars/contracts';
-import { Banner } from '../App';
+import { shopPath } from '@regulars/contracts/links';
+import '../styles/landing.css';
+import { Banner } from '../components/Banner';
 import { banner, demoShop } from '../config';
-import { statsOf } from '../history';
+import { statsOf } from '../stats';
+import type { ShopEvent } from '../history';
+import type { ShopState } from '../wallet';
 import { CountUp, LoyaltyCard, ago, fmt } from '../components/kit';
-import { go, rememberShop, useHistory, useShopState } from '../ui';
+import { go, rememberShop } from '../nav';
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** Live demo-shop numbers. The chain code loads after first paint, so the page appears at once. */
+function useDemoLive() {
+  const [state, setState] = useState<ShopState>();
+  const [events, setEvents] = useState<ShopEvent[]>();
+  useEffect(() => {
+    if (!demoShop) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = async () => {
+      const live = await import('./live');
+      const [s, e] = await Promise.all([live.readShop(demoShop!).catch(() => undefined), live.shopHistory(demoShop!).catch(() => undefined)]);
+      if (stopped) return;
+      if (s) setState(s);
+      if (e) setEvents(e);
+      timer = setTimeout(load, 20_000);
+    };
+    load();
+    return () => { stopped = true; clearTimeout(timer); };
+  }, []);
+  return { state, events };
+}
 
 /** Fade sections up as they scroll into view. */
 function useReveal() {
@@ -292,8 +317,7 @@ function SpinBadge() {
 
 export function Landing() {
   useReveal();
-  const { state } = useShopState(demoShop);
-  const { events } = useHistory(demoShop);
+  const { state, events } = useDemoLive();
   const [saved, setSaved] = useState(false);
   const [shopName, setShopName] = useState('');
   const lifetime = useMemo(() => statsOf(events ?? []), [events]);

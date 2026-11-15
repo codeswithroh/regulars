@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeftRight, BarChart3, ChevronsUpDown, ExternalLink, Home, LayoutGrid, LogOut, Plus, Store, Wallet, Ticket } from 'lucide-react';
-import { Banner } from '../App';
+import { Banner } from '../components/Banner';
 import { network } from '../config';
 import { Avatar, shortAddr } from '../components/kit';
 import { useKnownShops, useWallet, useWalletConnection } from '../ui';
 
-type Page = 'overview' | 'shop' | 'shops' | 'activity' | 'manage' | 'new' | 'missing';
+import type { AppPage as Page } from '../route';
 const TITLES: Record<Page, string> = { overview: 'Overview', shop: 'Pay', shops: 'Shops', activity: 'Activity', manage: 'Analytics', new: 'Open a shop', missing: 'Not found' };
 
 const NAV = [

@@ -1,10 +1,12 @@
-import { Network } from 'cashscript';
-import { parseShopPath, type Protocol } from '@regulars/contracts';
+import { parseShopPath } from '@regulars/contracts/links';
+
+/** Protocol-wide settings (same shape as the contracts package's Protocol type). */
+export interface Protocol { feePerStamp: bigint; protocolPkh: string }
 
 const value = (key: string) => String(import.meta.env[key] ?? '').split('#')[0].trim();
 
-export const network = value('VITE_NETWORK') === 'mainnet' ? Network.MAINNET : Network.CHIPNET;
-export const prefix = network === Network.MAINNET ? 'bitcoincash' : 'bchtest';
+export const network = value('VITE_NETWORK') === 'mainnet' ? 'mainnet' as const : 'chipnet' as const;
+export const prefix = network === 'mainnet' ? 'bitcoincash' : 'bchtest';
 
 /** Protocol-wide settings; every shop opened from this site uses them. */
 export const protocol: Protocol = {
@@ -20,4 +22,4 @@ export const demoShop = parseShopPath(value('VITE_DEMO_SHOP'));
 export const banner = { deck: value('VITE_DECK_URL'), repo: value('VITE_REPO_URL'), donation: value('VITE_DONATION_ADDRESS') };
 
 export const explorerTx = (txid: string) =>
-  network === Network.MAINNET ? `https://explorer.bch.ninja/tx/${txid}` : `https://chipnet.bch.ninja/tx/${txid}`;
+  network === 'mainnet' ? `https://explorer.bch.ninja/tx/${txid}` : `https://chipnet.bch.ninja/tx/${txid}`;

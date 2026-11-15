@@ -1,7 +1,9 @@
 // Shared hooks: wallet connection, live chain state, known shops, actions.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { UseWizardConnectResult } from '@wizardconnect/react';
-import { parseShopPath, shopPath, type Shop } from '@regulars/contracts';
+import { parseShopPath, type Shop } from '@regulars/contracts/links';
+import { MINE, VISITED, go, keyOf, readList, rememberMine, rememberShop } from './nav';
+export { go, keyOf, rememberMine, rememberShop };
 import { demoShop } from './config';
 import { primaryPkh, readShop, readWallet, walletPkhs, type ShopState, type WalletState } from './wallet';
 import { shopHistory, type ShopEvent } from './history';
@@ -9,8 +11,6 @@ import type { Notice } from './components/kit';
 
 export const WalletContext = createContext<UseWizardConnectResult>(null!);
 export const useWalletConnection = () => useContext(WalletContext);
-export const go = (path: string) => { window.location.hash = path; };
-export const keyOf = (shop: Shop) => shopPath(shop);
 
 /** Poll an async source; keeps the last good value across refreshes. */
 function usePoll<T>(load: (() => Promise<T>) | undefined, ms: number, deps: unknown[]) {
@@ -68,13 +68,6 @@ export function useHistories(shops: Shop[]) {
 }
 
 // Shops this browser knows about. A shop is fully described by its link, so these are just links.
-const VISITED = 'regulars-shops';
-const MINE = 'regulars-my-shops';
-const readList = (key: string): string[] => { try { return JSON.parse(localStorage.getItem(key) ?? '[]'); } catch { return []; } };
-const writeList = (key: string, list: string[]) => { try { localStorage.setItem(key, JSON.stringify(list.slice(0, 30))); } catch { /* private window */ } window.dispatchEvent(new Event('regulars-shops')); };
-export const rememberShop = (shop: Shop) => { const p = keyOf(shop); writeList(VISITED, [p, ...readList(VISITED).filter((x) => x !== p)]); };
-export const rememberMine = (shop: Shop) => { const p = keyOf(shop); writeList(MINE, [p, ...readList(MINE).filter((x) => x !== p)]); rememberShop(shop); };
-
 export function useKnownShops(primary?: string) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
