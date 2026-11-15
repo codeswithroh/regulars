@@ -129,10 +129,34 @@ async function identity(name = demoShop().name) {
 Verified addresses: ${found?.verified.join(', ') || 'none'}`);
 }
 
-const commands: Record<string, (...a: string[]) => Promise<unknown>> = { keygen, status, open, collect, 'sweep-legacy': sweepLegacy, identity };
+/**
+ * Send plain BCH from the owner key: `send <address> <sats>` shows the plan; add `--yes` to broadcast.
+ * Token outputs are never spent, and the change returns to the owner key.
+ */
+const send = (to = '', amountArg = '', confirm = '') => withConnection(async (provider) => {
+  if (!/^(bitcoincash|bchtest):[qz][0-9a-z]{40,}$/.test(to)) throw new Error('Usage: send <bitcoincash:q… address> <sats> [--yes]');
+  if (!/^\d+$/.test(amountArg)) throw new Error('Amount must be a whole number of sats');
+  const amount = BigInt(amountArg);
+  const owner = ownerWallet();
+  const coins = (await provider.getUtxos(owner.address)).filter((u) => !u.token);
+  const total = coins.reduce((s, u) => s + u.satoshis, 0n);
+  const build = (fee: bigint) => {
+    const b = new TransactionBuilder({ provider }).addInputs(coins, owner.signer.unlockP2PKH()).addOutput({ to, amount });
+    const change = total - amount - fee;
+    if (change >= 546n) b.addOutput({ to: owner.address, amount: change });
+    return b;
+  };
+  const fee = BigInt(build(1000n).build().length / 2) + 10n;
+  if (total < amount + fee) throw new Error(`The owner key holds ${total} sats, not enough to send ${amount} plus a ${fee}-sat fee`);
+  console.log(`From      ${owner.address} (${total} sats)\nTo        ${to}\nAmount    ${amount} sats\nFee       ${fee} sats\nKept      ${total - amount - fee} sats`);
+  if (confirm !== '--yes') return console.log('\nNothing sent. Run again with --yes to broadcast.');
+  console.log(`Sent: ${(await build(fee).send()).txid}`);
+});
+
+const commands: Record<string, (...a: string[]) => Promise<unknown>> = { keygen, status, open, collect, 'sweep-legacy': sweepLegacy, identity, send };
 const run = commands[command ?? ''];
 if (!run) {
-  console.error('Usage: npm run shop -w cli -- <keygen | status | open [name] [reserveSats] | collect | sweep-legacy | identity [name]>');
+  console.error('Usage: npm run shop -w cli -- <keygen | status | open [name] [reserveSats] | collect | sweep-legacy | identity [name] | send <address> <sats> [--yes]>');
   process.exit(1);
 }
 run(...args).then(() => process.exit(0), (error) => {
