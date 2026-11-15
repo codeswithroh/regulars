@@ -29,6 +29,8 @@ A loyalty protocol on Bitcoin Cash with no backend: pay a shop, get stamps in th
 <a href="xo/README.md">XO template</a>
 </p>
 
+<p><sub><b>BLAZE starting point (Nov 14):</b> <a href="https://regulars-xri7qw8xe-codeswithrohs-projects.vercel.app">demo as it was</a> · <a href="https://github.com/codeswithroh/regulars/tree/blaze-start">code at that point</a> (tag <code>blaze-start</code>)</sub></p>
+
 </div>
 
 ---
