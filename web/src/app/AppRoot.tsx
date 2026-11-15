@@ -11,9 +11,11 @@ import { Shops } from './Shops';
 import { Activity } from './Activity';
 import { Manage } from './Manage';
 import { NewShop } from './NewShop';
+import { IdentityPage } from '../identity/IdentityPage';
+import { LookupPage } from '../identity/LookupPage';
 
 /** The dashboard: wallet connection plus every app page. */
-export function AppRoot({ page, shop, path }: { page: AppPage; shop?: Shop; path: string }) {
+export function AppRoot({ page, shop, query, path }: { page: AppPage; shop?: Shop; query?: string; path: string }) {
   const wc = useResumableConnection(useWizardConnect({ dappName: 'Regulars' }));
   return (
     <WalletContext.Provider value={wc}>
@@ -29,6 +31,8 @@ export function AppRoot({ page, shop, path }: { page: AppPage; shop?: Shop; path
         {page === 'activity' && <Activity />}
         {page === 'manage' && <Manage shop={shop} key={path} />}
         {page === 'new' && <NewShop />}
+        {page === 'identity' && <IdentityPage />}
+        {page === 'lookup' && <LookupPage query={query} />}
         {page === 'missing' && <p className="notice error" style={{ animation: 'none' }}>That link is not a valid shop. <a href="#/app">Go to the app</a></p>}
       </Shell>
     </WalletContext.Provider>

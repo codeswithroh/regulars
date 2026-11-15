@@ -1,0 +1,22 @@
+{
+  "name": "@regulars/bch-nostr-id",
+  "version": "0.1.0",
+  "description": "Bind a Bitcoin Cash address to a Nostr identity (NIP-39), discover and verify the binding, and authenticate with challenge-response.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bitauth/libauth": "3.1.0-next.8",
+    "nostr-tools": "2.25.4"
+  },
+  "devDependencies": {
+    "cashscript": "0.14.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.0"
+  }
+}

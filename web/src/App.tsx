@@ -5,6 +5,7 @@ import { route } from './route';
 
 const Landing = lazy(() => import('./landing/Landing').then((m) => ({ default: m.Landing })));
 const AppRoot = lazy(() => import('./app/AppRoot').then((m) => ({ default: m.AppRoot })));
+const SignInDemo = lazy(() => import('./identity/SignInDemo').then((m) => ({ default: m.SignInDemo })));
 const Poster = lazy(() => import('./app/Poster').then((m) => ({ default: m.Poster })));
 
 const currentPath = () => window.location.hash.replace(/^#/, '') || '/';
@@ -21,7 +22,8 @@ export function App() {
     <Suspense fallback={<div className={r.kind === 'app' ? 'boot app' : 'boot land'} />}>
       {r.kind === 'landing' && <Landing />}
       {r.kind === 'poster' && <Poster shop={r.shop} />}
-      {r.kind === 'app' && <AppRoot page={r.page} shop={r.shop} path={path} />}
+      {r.kind === 'signin' && <SignInDemo />}
+      {r.kind === 'app' && <AppRoot page={r.page} shop={r.shop} query={r.query} path={path} />}
     </Suspense>
   );
 }

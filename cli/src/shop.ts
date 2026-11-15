@@ -1,10 +1,13 @@
-// Owner commands:  npm run shop -w cli -- <keygen | status | open [name] [reserveSats] | collect | sweep-legacy>
+// Owner commands:  npm run shop -w cli -- <keygen | status | open [name] [reserveSats] | collect | sweep-legacy | identity>
 import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { TransactionBuilder } from 'cashscript';
 import { generatePrivateKey, encodePrivateKeyWif } from '@bitauth/libauth';
 import { buildCollect, buildCreateShop, makeIssuer, makeReserve, shopPath } from '@regulars/contracts';
-import { ENV_PATH, demoShop, env, network, ownerWallet, protocol, withConnection } from './config.js';
+import { generateSecretKey, getPublicKey, finalizeEvent, nip19 } from 'nostr-tools';
+import { signMessage, verificationText, identityEvent, currentClaims, publish, findByPubkey } from '@regulars/bch-nostr-id';
+import { decodePrivateKeyWif, binToHex, hexToBin } from '@bitauth/libauth';
+import { ENV_PATH, demoShop, env, need, network, ownerWallet, protocol, withConnection } from './config.js';
 
 const [command, ...args] = process.argv.slice(2);
 
@@ -103,10 +106,33 @@ const sweepLegacy = () => withConnection(async (provider) => {
   console.log(`Swept ${utxos.length} outputs into ${sum} sats (${(await build(feeOf(build(3000n))).send()).txid})`);
 });
 
-const commands: Record<string, (...a: string[]) => Promise<unknown>> = { keygen, status, open, collect, 'sweep-legacy': sweepLegacy };
+/**
+ * Verify the demo shop: give it a Nostr identity and bind the shop's payout address to it with a signed
+ * message, so the shop page shows who runs it. The Nostr key is kept in the env file, never printed.
+ */
+async function identity(name = demoShop().name) {
+  let hex = env('NOSTR_SECRET_HEX');
+  if (!hex) { hex = binToHex(generateSecretKey()); setEnv({ NOSTR_SECRET_HEX: hex }); }
+  const sk = hexToBin(hex);
+  const pubkey = getPublicKey(sk);
+  const decoded = decodePrivateKeyWif(need('MERCHANT_WIF'));
+  if (typeof decoded === 'string') throw new Error(decoded);
+  const owner = ownerWallet();
+  const now = Math.floor(Date.now() / 1000);
+  const profile = finalizeEvent({ kind: 0, created_at: now, tags: [], content: JSON.stringify({ name, about: `${name} runs its loyalty programme on Regulars.` }) }, sk);
+  const claim = { address: owner.address, proof: { type: 'msg' as const, signature: signMessage(decoded.privateKey, verificationText(pubkey)) } };
+  const event = finalizeEvent(identityEvent([claim], await currentClaims(pubkey)), sk);
+  console.log(`Profile accepted by ${(await publish(profile)).length} relays; identity by ${(await publish(event)).length} relays`);
+  await new Promise((r) => setTimeout(r, 1500));
+  const found = await findByPubkey(pubkey);
+  console.log(`${nip19.npubEncode(pubkey)}
+Verified addresses: ${found?.verified.join(', ') || 'none'}`);
+}
+
+const commands: Record<string, (...a: string[]) => Promise<unknown>> = { keygen, status, open, collect, 'sweep-legacy': sweepLegacy, identity };
 const run = commands[command ?? ''];
 if (!run) {
-  console.error('Usage: npm run shop -w cli -- <keygen | status | open [name] [reserveSats] | collect | sweep-legacy>');
+  console.error('Usage: npm run shop -w cli -- <keygen | status | open [name] [reserveSats] | collect | sweep-legacy | identity [name]>');
   process.exit(1);
 }
 run(...args).then(() => process.exit(0), (error) => {

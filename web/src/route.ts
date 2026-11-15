@@ -1,14 +1,17 @@
 import { parseShopPath, type Shop } from '@regulars/contracts/links';
 
-export type AppPage = 'overview' | 'shop' | 'shops' | 'activity' | 'manage' | 'new' | 'missing';
+export type AppPage = 'overview' | 'shop' | 'shops' | 'activity' | 'manage' | 'new' | 'identity' | 'lookup' | 'missing';
 export type Route =
   | { kind: 'landing' }
   | { kind: 'poster'; shop: Shop }
-  | { kind: 'app'; page: AppPage; shop?: Shop };
+  | { kind: 'signin' }
+  | { kind: 'app'; page: AppPage; shop?: Shop; query?: string };
 
 export function route(path: string): Route {
   if (path === '/' || path === '') return { kind: 'landing' };
   if (path === '/new') return { kind: 'app', page: 'new' };
+  if (path === '/signin-demo') return { kind: 'signin' };
+  if (path.startsWith('/app/id/')) return { kind: 'app', page: 'lookup', query: decodeURIComponent(path.slice('/app/id/'.length)) };
   if (path.startsWith('/poster/')) {
     const shop = parseShopPath(`/s/${path.slice('/poster/'.length)}`);
     return shop ? { kind: 'poster', shop } : { kind: 'app', page: 'missing' };
@@ -18,6 +21,6 @@ export function route(path: string): Route {
     return shop ? { kind: 'app', page: 'shop', shop } : { kind: 'app', page: 'missing' };
   }
   if (path.startsWith('/app/manage/s/')) return { kind: 'app', page: 'manage', shop: parseShopPath(path.slice('/app/manage'.length)) };
-  const page = ({ '/app': 'overview', '/app/shops': 'shops', '/app/activity': 'activity', '/app/manage': 'manage', '/app/new': 'new' } as const)[path];
+  const page = ({ '/app': 'overview', '/app/shops': 'shops', '/app/activity': 'activity', '/app/manage': 'manage', '/app/new': 'new', '/app/identity': 'identity', '/app/id': 'lookup' } as const)[path];
   return page ? { kind: 'app', page } : { kind: 'app', page: 'missing' };
 }

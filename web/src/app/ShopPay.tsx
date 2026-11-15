@@ -7,6 +7,7 @@ import { Ring } from '../components/charts';
 import { Avatar, CountUp, LoyaltyCard, Toast, fmt, sats } from '../components/kit';
 import { FirstVisitHint } from '../components/FirstVisitHint';
 import { rememberShop, stampsOf, useAction, useShopState, useWallet, useWalletConnection } from '../ui';
+import { MerchantBadge } from '../identity/MerchantBadge';
 
 // Stamps per preset. At demo sizes the 1 sat/byte network fee is a real share of the cashback,
 // so presets start at 10 stamps to keep a redemption worth more than its fee.
@@ -62,7 +63,10 @@ export function ShopPay({ shop }: { shop: Shop }) {
             <Avatar seed={shop.category} size={48} label={shop.name} />
             <div style={{ minWidth: 0 }}>
               <h1>{shop.name}</h1>
-              <span className="pill accent" style={{ marginTop: 6 }}>{percent}% back</span>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                <span className="pill accent">{percent}% back</span>
+                <MerchantBadge shop={shop} />
+              </div>
             </div>
             <div className="lock">
               <ShieldCheck size={18} style={{ color: 'var(--good)', flex: 'none' }} />

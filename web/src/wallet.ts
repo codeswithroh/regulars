@@ -4,6 +4,7 @@ import { TransactionBuilder, placeholderP2PKHUnlocker, type SpendableUtxo } from
 import { hash160, encodeCashAddress, stringify, binToHex } from '@bitauth/libauth';
 import type { DappConnectionManager } from '@wizardconnect/dapp';
 import { makeIssuer, makeReserve, buildCreateShop, buildEarn, buildRedeem, FailoverProvider, BCH_DUST, PLACEHOLDER_INPUT_BYTES, type Shop, type Coin } from '@regulars/contracts';
+import { commitmentScript } from '@regulars/bch-nostr-id';
 import { network, prefix, protocol } from './config';
 
 // One connection for the page, with automatic failover across several Electrum servers.
@@ -227,4 +228,52 @@ export async function openShop(manager: DappConnectionManager, input: NewShop, o
   });
   const txid = await signAndSend(manager, builder, inputs.map(pathOf), `Open "${input.name}": mint stamps and fund a ${input.reserveSats}-sat reward reserve`);
   return { shop, txid };
+}
+
+/** The address a wallet's on-chain identity commitment is spent from: receive/0 when it holds a coin, else the largest coin's. */
+export function commitmentCoin(wallet: WalletState): WalletUtxo | undefined {
+  const plain = wallet.utxos.filter((u) => !u.token && u.satoshis >= 1500n).sort((a, b) => Number(b.satoshis - a.satoshis));
+  return plain.find((u) => u.path === 'receive' && u.index === 0) ?? plain[0];
+}
+
+/**
+ * Prove control of an address to a Nostr key by spending one of its coins back to itself with the
+ * NIP-39 verification text in an OP_RETURN output. Costs only the network fee (about 300 sats).
+ */
+export async function commitIdentity(manager: DappConnectionManager, wallet: WalletState, text: string) {
+  const coin = commitmentCoin(wallet);
+  if (!coin) throw new Error('Your wallet needs a coin of at least 1,500 sats to commit an identity');
+  const script = commitmentScript(text);
+  const fee = 41n + PLACEHOLDER_INPUT_BYTES + 34n + BigInt(9 + script.length) + 30n;
+  const builder = new TransactionBuilder({ provider });
+  builder.addInput(coin, placeholderP2PKHUnlocker(coin.address));
+  builder.addOutput({ to: script, amount: 0n });
+  builder.addOutput({ to: coin.address, amount: coin.satoshis - fee });
+  const txid = await signAndSend(manager, builder, [pathOf(coin, 0)], 'Link this address to your Nostr identity (no BCH leaves your wallet)');
+  return { txid, address: coin.address };
+}
+
+/** Send plain BCH to an address (used to pay someone by their verified identity). */
+export async function sendBch(manager: DappConnectionManager, wallet: WalletState, to: string, amount: bigint, prompt: string) {
+  const coins = pickCoins(wallet, amount + 1000n);
+  const total = coins.reduce((s, c) => s + c.satoshis, 0n);
+  const fee = BigInt(coins.length) * (41n + PLACEHOLDER_INPUT_BYTES) + 2n * 44n + 20n;
+  if (total < amount + fee) throw new Error(`Your wallet holds ${wallet.bch} sats, not enough to send ${amount}`);
+  const builder = new TransactionBuilder({ provider });
+  coins.forEach((c) => builder.addInput(c, placeholderP2PKHUnlocker(c.address)));
+  builder.addOutput({ to, amount });
+  const change = total - amount - fee;
+  if (change >= BCH_DUST) builder.addOutput({ to: coins[0].address, amount: change });
+  return signAndSend(manager, builder, coins.map(pathOf), prompt);
+}
+
+/** Raw transaction hex by id, for checking on-chain identity commitments. */
+export const fetchTx = async (txid: string) => { await online(); return provider.getRawTransaction(txid); };
+
+/** Stamp balances an address holds, by token category. */
+export async function tokensAt(address: string): Promise<Map<string, bigint>> {
+  await online();
+  const held = new Map<string, bigint>();
+  for (const u of await provider.getUtxos(address)) if (u.token && !u.token.nft) held.set(u.token.category, (held.get(u.token.category) ?? 0n) + u.token.amount);
+  return held;
 }

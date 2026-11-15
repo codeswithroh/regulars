@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeftRight, BarChart3, ChevronsUpDown, ExternalLink, Home, LayoutGrid, LogOut, Plus, Store, Wallet } from 'lucide-react';
+import { ArrowLeftRight, BadgeCheck, Fingerprint, LogIn, BarChart3, ChevronsUpDown, ExternalLink, Home, LayoutGrid, LogOut, Plus, Store, Wallet } from 'lucide-react';
 import { Banner } from '../components/Banner';
 import { network } from '../config';
 import { Avatar, shortAddr } from '../components/kit';
@@ -7,7 +7,7 @@ import { Logo } from '../components/Logo';
 import { useKnownShops, useWallet, useWalletConnection } from '../ui';
 
 import type { AppPage as Page } from '../route';
-const TITLES: Record<Page, string> = { overview: 'Overview', shop: 'Pay', shops: 'Shops', activity: 'Activity', manage: 'Analytics', new: 'Open a shop', missing: 'Not found' };
+const TITLES: Record<Page, string> = { overview: 'Overview', shop: 'Pay', shops: 'Shops', activity: 'Activity', manage: 'Analytics', new: 'Open a shop', identity: 'Identity', lookup: 'Verify an identity', missing: 'Not found' };
 
 const NAV = [
   { group: 'Main', items: [
@@ -18,6 +18,11 @@ const NAV = [
   { group: 'Merchant', items: [
     { page: 'manage', href: '#/app/manage', label: 'Analytics', icon: BarChart3 },
     { page: 'new', href: '#/app/new', label: 'Open a shop', icon: Plus },
+  ] },
+  { group: 'Identity', items: [
+    { page: 'identity', href: '#/app/identity', label: 'My identity', icon: Fingerprint },
+    { page: 'lookup', href: '#/app/id', label: 'Verify', icon: BadgeCheck },
+    { page: 'signin', href: '#/signin-demo', label: 'Sign-in demo', icon: LogIn },
   ] },
 ] as const;
 

@@ -4,6 +4,7 @@
   "type": "module",
   "workspaces": [
     "contracts",
+    "identity",
     "cli",
     "web",
     "e2e",

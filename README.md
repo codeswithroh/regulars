@@ -49,6 +49,7 @@ A loyalty protocol on Bitcoin Cash with no backend: pay a shop, get stamps in th
 - [Screenshots](#screenshots)
 - [Features](#features)
 - [How it works](#how-it-works)
+- [Decentralized identity](#decentralized-identity)
 - [Tech stack](#tech-stack)
 - [Project layout](#project-layout)
 - [Quick start](#quick-start)
@@ -100,6 +101,7 @@ and its customers.
 | 👛 | Stamps live in **your own wallet** as CashTokens | Printable **QR poster** and a shareable shop link |
 | 🔍 | Every fee shown before you sign | **Analytics** read from the chain: revenue, customers, redemptions |
 | 🌐 | Works in any wallet that speaks WizardConnect, or any XO wallet via the [template](xo/README.md) | No server, no database, nothing to host but static files |
+| 🪪 | Link your wallet to a **Nostr identity**, sign in to apps, get paid by npub | A **verified merchant** badge so customers know the shop is real |
 
 ## How it works
 
@@ -136,6 +138,28 @@ A shop is fully described by five values (name, token category, shop key hash, e
 rate), and both contract addresses follow from them. So a shop *is* its link:
 `/#/s/<name>/<category>/<merchantPkh>/<earn>/<redeem>`. Nothing is registered anywhere.
 
+## Decentralized identity
+
+Regulars links a Bitcoin Cash wallet to a **Nostr identity**, so customers and shops can be found,
+verified and paid across apps, with no identity provider in between. The full spec is in
+[`identity/README.md`](identity/README.md).
+
+- **Bind:** your Nostr key signs a NIP-39 identity event (kind `10011`) listing your BCH address.
+  Your BCH key signs back the NIP-39 verification text, which names your npub. You can do this with
+  "Sign message" in any wallet, or with an on-chain commitment from a WizardConnect wallet.
+- **Discover:** look anyone up by npub, by NIP-05 name, or in reverse by BCH address, on public relays.
+- **Verify:** both signatures are checked in the browser. An on-chain proof is re-run in the BCH
+  virtual machine against the coins it spends.
+- **Authenticate:** the [sign-in demo](https://regulars-bch.vercel.app/#/signin-demo) is a separate
+  "Corner Coffee members" app that signs users in with challenge-response, using only the library and
+  public relays.
+- **Use it in Regulars:**
+  - Shop pages show **"Run by …"** when the payout address is bound, which fixes copycat shop links.
+  - You can pay a person by their verified identity.
+  - Profiles show which shops someone is a regular at, as portable reputation.
+
+The library is reusable on its own: `@regulars/bch-nostr-id` in [`identity/`](identity).
+
 ## Tech stack
 
 | Layer | Built with |
@@ -143,6 +167,7 @@ rate), and both contract addresses follow from them. So a shop *is* its link:
 | Contracts | [CashScript](https://cashscript.org) 0.14 covenants, CashTokens, [libauth](https://github.com/bitauth/libauth) |
 | Web app | React 18, Vite 6, static hosting on Vercel |
 | Wallets | [WizardConnect](https://www.npmjs.com/package/@wizardconnect/dapp) (tested with Cashonize), an [XO](xo/README.md) template |
+| Identity | [Nostr](https://github.com/nostr-protocol/nips) (NIP-39, NIP-42, NIP-05, NIP-07) via nostr-tools, the Bitcoin Signed Message format |
 | Chain data | Electrum servers with automatic failover |
 | Tests | Vitest on CashScript's mock network, Playwright with a headless WizardConnect wallet |
 
@@ -155,6 +180,7 @@ rate), and both contract addresses follow from them. So a shop *is* its link:
 | [`cli/`](cli) | Owner tools (open the demo shop, status, collect fees) and a live multi-customer check |
 | [`e2e/`](e2e) | Browser tests: Chromium driven by Playwright, with a headless WizardConnect wallet |
 | [`xo/`](xo) | An XO template so any XO wallet can earn and redeem |
+| [`identity/`](identity) | `bch-nostr-id`: bind, discover, verify and authenticate BCH + Nostr identities |
 | [`scripts/`](scripts) | Vercel static build |
 
 ## Quick start
@@ -180,6 +206,7 @@ site never sees it.
 
 ```bash
 npm test                 # covenants: happy paths and attacks
+npm test -w identity     # identity binding, proofs, tamper cases and sign-in (16 tests)
 npm run test:e2e         # browser flows on chipnet (spends test coins from .env)
 npm run e2e -w cli       # several customers paying at once, then a redemption
 E2E_BASE_URL=https://your-site npm run test:e2e   # the same browser tests against a deployment
@@ -208,7 +235,8 @@ The output is static files only. No environment variables are needed on the host
   hold. It comes back on redemption.
 - The site reads the first 10 receive and 10 change addresses of the connected wallet.
 - Shop links are self-describing, so a link can be crafted for a different shop with the same
-  name. Customers should get the link or poster from the shop itself.
+  name. Shops that link their payout address to a Nostr identity show a "Run by …" badge; for
+  unverified shops, customers should get the link or poster from the shop itself.
 - Closing a shop (`withdraw`) is implemented and tested in the contracts but has no button yet.
 
 ---
