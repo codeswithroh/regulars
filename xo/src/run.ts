@@ -11,7 +11,7 @@ import { TransactionBuilder } from 'cashscript';
 import { generateBip39Mnemonic, hexToBin, binToHex, lockingBytecodeToCashAddress, encodeDataPush, flattenBinArray, decodeTransaction, createVirtualMachineBch, stringify } from '@bitauth/libauth';
 import { Engine, XO_SUPPORTED_NETWORKS, DUST_LIMIT_SATOSHIS, getTemplateLockingScriptOrThrow } from '@xo-cash/engine';
 import { p2pkhTemplate } from '@xo-cash/templates';
-import { serializeInvitation } from '@xo-cash/utils';
+import { compileCashAssemblyString, serializeInvitation } from '@xo-cash/utils';
 import { makeIssuer, makeReserve } from '@regulars/contracts';
 import { ENV_PATH, demoShop, env, network, ownerWallet, protocol, withConnection } from '@regulars/cli/src/config.ts';
 import { regularsTemplate } from './template.js';
@@ -118,10 +118,25 @@ try {
     log(`  ${outputIdentifier} locking bytecode matches the CashScript contract`);
   }
 
-  // The engine only compiles unlocking bytecode for outputs this account tracks, and offers no way
-  // to track a covenant someone else created. Both contracts take no signature, so their unlocking
-  // bytecode is the template's own script, `OP_0 <redeem script>`, supplied with the input.
-  const contractUnlock = (redeemScriptHex: string) => flattenBinArray([Uint8Array.of(0x00), encodeDataPush(hexToBin(redeemScriptHex))]);
+  // The engine only signs inputs this account tracks, and the contracts were created by the shop.
+  // They need no signature, so (as the XO team suggests) we compile the template's own unlocking
+  // script from its CashAssembly with the invitation's values, and pass it on the input. As a
+  // safety check it must equal what CashScript builds for the same contract: `OP_0 <redeem script>`.
+  const contractUnlock = (scriptId: string, values: Record<string, unknown>, redeemScriptHex: string) => {
+    // Byte-typed values go in as raw bytes; a hex string would be pushed as its text.
+    const asBytes = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, ['stampCategory', 'merchantPkh', 'protocolPkh'].includes(k) ? hexToBin(v as string) : v]));
+    const compiled = compileCashAssemblyString({
+      cashAssemblyText: scriptId,
+      variables: asBytes as never,
+      templateVariables: regularsTemplate.variables,
+      templateScripts: regularsTemplate.scripts,
+      evaluationDecodeMode: 'hex',
+    });
+    const expected = binToHex(flattenBinArray([Uint8Array.of(0x00), encodeDataPush(hexToBin(redeemScriptHex))]));
+    if (compiled !== expected) throw new Error(`${scriptId}: template compiled ${compiled.slice(0, 40)}…, CashScript expects ${expected.slice(0, 40)}…`);
+    log(`  ${scriptId} compiled from the template (matches CashScript)`);
+    return hexToBin(compiled);
+  };
 
   // ---------- 1. earn ----------
   const { issuerUtxo, issuer, reserve, reserveUtxo } = await withConnection(async (provider) => {
@@ -139,13 +154,14 @@ try {
   const earnIntent = template.start!.find((i) => i.action === 'earn')!;
   const funding = (await plainCoins()).sort((a, b) => Number(BigInt(b.valueSatoshis) - BigInt(a.valueSatoshis)))[0];
 
+  const earnValues = { ...shopValues, feePerStamp: fees.feePerStamp, protocolPkh: fees.protocolPkh, issuerSatoshis: issuerUtxo.satoshis, issuerStamps: issuerUtxo.token!.amount, stamps: STAMPS };
   const earn = await engine.createInvitation({
     templateIdentifier,
     actionIdentifier: 'earn',
     intent: earnIntent,
-    variables: variables({ ...shopValues, feePerStamp: fees.feePerStamp, protocolPkh: fees.protocolPkh, issuerSatoshis: issuerUtxo.satoshis, issuerStamps: issuerUtxo.token!.amount, stamps: STAMPS }),
+    variables: variables(earnValues),
     inputs: [
-      { inputIdentifier: 'issuerInput', outpointTransactionHash: hexToBin(issuerUtxo.txid), outpointIndex: issuerUtxo.vout, unlockingBytecode: contractUnlock(issuer.bytecode) },
+      { inputIdentifier: 'issuerInput', outpointTransactionHash: hexToBin(issuerUtxo.txid), outpointIndex: issuerUtxo.vout, unlockingBytecode: contractUnlock('issuerEarnUnlockingBytecode', earnValues, issuer.bytecode) },
       { outpointTransactionHash: hexToBin(funding.outpointTransactionHash), outpointIndex: funding.outpointIndex },
     ],
   });
@@ -175,13 +191,14 @@ try {
   if (!redeemIntent) throw new Error('The stamps output does not offer the redeem follow-up');
   log(`Follow-up found on ${script.lockingScriptIdentifier}: ${redeemIntent.action} (${stampsTotal} stamps in ${held.length} output(s))`);
 
+  const redeemValues = { ...shopValues, reserveSatoshis: reserveUtxo.satoshis, reserveStamps: reserveUtxo.token?.amount ?? 0n, stamps: stampsTotal };
   const redeem = await engine.createInvitation({
     templateIdentifier,
     actionIdentifier: 'redeem',
     intent: redeemIntent,
-    variables: variables({ ...shopValues, reserveSatoshis: reserveUtxo.satoshis, reserveStamps: reserveUtxo.token?.amount ?? 0n, stamps: stampsTotal }),
+    variables: variables(redeemValues),
     inputs: [
-      { inputIdentifier: 'reserveInput', outpointTransactionHash: hexToBin(reserveUtxo.txid), outpointIndex: reserveUtxo.vout, unlockingBytecode: contractUnlock(reserve.bytecode) },
+      { inputIdentifier: 'reserveInput', outpointTransactionHash: hexToBin(reserveUtxo.txid), outpointIndex: reserveUtxo.vout, unlockingBytecode: contractUnlock('reserveRedeemUnlockingBytecode', redeemValues, reserve.bytecode) },
       ...held.map((u) => ({ outpointTransactionHash: hexToBin(u.outpointTransactionHash), outpointIndex: u.outpointIndex })),
     ],
   });

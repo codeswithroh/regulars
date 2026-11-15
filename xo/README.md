@@ -8,8 +8,8 @@ then redeem them, with the engine building every transaction from the template.
 
 | Action | Chipnet transaction |
 |---|---|
-| `earn` (20 stamps) | `293bbc45c1ecbbaa5f2fd566fbf2c548657e1dc171c08b827f5d739fcf6ace36` |
-| `redeem` (follow-up, 20 stamps) | `335bf844efa39d056eb0383625bf46b24e30ff6ea3a3e6282f36f037ec1ccdd3` |
+| `earn` (20 stamps) | `3f72c8060ce6a7505994c8c3289c178c4efb2536cf837f176c94f804be1bbe84` |
+| `redeem` (follow-up, 20 stamps) | `5797d657f1bc379dd24bf5867165b1f7c77e9e6fd27f8aae806cc265ff06c4c5` |
 
 Built with `@xo-cash/engine@0.1.1-next.18029697917`. The template was first executed on
 `0.1.1-next.17778370827` (earn `d50bb760…ce8ce7a`, redeem `f6a79ac0…f6f6396c`) and re-run after the
@@ -76,15 +76,20 @@ import `regulars.template.json`, and load the invitation text.
 
 Re-checked on engine `0.1.1-next.18029697917`.
 
-- The engine only compiles unlocking bytecode for outputs its own account tracks, and there is no
-  call to track a covenant someone else created (`signInvitation` on the covenant input throws
-  `InputUnspentOutputUnavailableError`). Both covenant inputs take no signature, so the runner
-  supplies their unlocking bytecode, `OP_0 <redeem script>`, with the input. That is exactly the
-  template's `issuerEarnUnlockingBytecode` / `reserveRedeemUnlockingBytecode`.
+- The engine signs only inputs its own account tracks, and the two contracts were created by the
+  shop. They need no signature, so (as the XO team recommends) the runner compiles the template's
+  own `issuerEarnUnlockingBytecode` / `reserveRedeemUnlockingBytecode` with `compileCashAssemblyString`
+  from `@xo-cash/utils` and passes the result as the input's `unlockingBytecode`. Byte-typed values
+  must be given to that compiler as `Uint8Array` (a hex string is pushed as its text), with
+  `evaluationDecodeMode: 'hex'`. The runner also checks the result equals CashScript's
+  `OP_0 <redeem script>` before broadcasting.
 - An output locking script written as a CashAssembly evaluation that concatenates,
   `$(<0x76a914> <merchantPkh> OP_CAT <0x88ac> OP_CAT)`, resolves to the wrong bytes
   (`0000db1e…fd0a00` instead of `76a914bdb1e0…fda88ac`). The template writes the shop's P2PKH
-  directly as a `p2s` locking script instead, which resolves correctly.
+  directly as a `p2s` locking script instead, which resolves correctly. `compileCashAssemblyString`
+  produces the right bytes for the same script with `evaluationDecodeMode: 'hex'` and `Uint8Array`
+  values, but its default decode mode reads the result as UTF-8 text, which would explain the
+  mangled output.
 - The engine uses IndexedDB, its supported storage; in Node it is provided by `fake-indexeddb`,
   so the account's state lasts for one run. (The SQLite option is not supported yet, per the XO
   team.)
