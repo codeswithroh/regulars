@@ -20,6 +20,11 @@
       "name": "Customer",
       "description": "Pays the shop and holds its stamps.",
       "icon": "customer"
+    },
+    "merchant": {
+      "name": "Shop",
+      "description": "Opens a shop, is paid by its customers, and can close it.",
+      "icon": "shop"
     }
   },
   "start": [
@@ -28,6 +33,13 @@
       "role": "customer",
       "generate": [
         "ownerKey"
+      ]
+    },
+    {
+      "action": "openShop",
+      "role": "merchant",
+      "generate": [
+        "merchantKey"
       ]
     }
   ],
@@ -97,6 +109,128 @@
         ]
       },
       "transaction": "redeemTransaction"
+    },
+    "redeemFresh": {
+      "name": "Redeem stamps (first redemption)",
+      "description": "Hand stamps to a reward reserve nobody has redeemed against yet, and take the BCH they are worth.",
+      "icon": "redeem",
+      "roles": {
+        "customer": {
+          "requirements": {
+            "variables": [
+              "stampCategory",
+              "merchantPkh",
+              "satsPerStampEarned",
+              "satsPerStampRedeemed",
+              "reserveSatoshis",
+              "stamps"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "participants": [
+          {
+            "role": "customer",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "transaction": "redeemFreshTransaction"
+    },
+    "openShop": {
+      "name": "Open a shop",
+      "description": "Mint the stamp supply into an issuer contract and lock a reward reserve, in one transaction.",
+      "icon": "shop",
+      "roles": {
+        "merchant": {
+          "requirements": {
+            "variables": [
+              "stampCategory",
+              "satsPerStampEarned",
+              "satsPerStampRedeemed",
+              "feePerStamp",
+              "protocolPkh",
+              "supply",
+              "reserveFunding",
+              "shopName"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "participants": [
+          {
+            "role": "merchant",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "transaction": "openShopTransaction"
+    },
+    "closeIssuer": {
+      "name": "Retire an issuer output",
+      "description": "Take back the stamps an issuer output has not given out. Accrued protocol fees, if any, go to the protocol.",
+      "icon": "shop",
+      "roles": {
+        "merchant": {
+          "requirements": {
+            "secrets": [
+              "merchantKey"
+            ],
+            "variables": [
+              "refundSatoshis"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "participants": [
+          {
+            "role": "merchant",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "transaction": "closeIssuerTransaction"
+    },
+    "withdrawReserve": {
+      "name": "Withdraw the reward reserve",
+      "description": "Take the reward reserve's BCH and handed-in stamps back to the shop.",
+      "icon": "shop",
+      "roles": {
+        "merchant": {
+          "requirements": {
+            "secrets": [
+              "merchantKey"
+            ],
+            "variables": [
+              "refundSatoshis"
+            ]
+          }
+        }
+      },
+      "requirements": {
+        "participants": [
+          {
+            "role": "merchant",
+            "slots": {
+              "min": 1,
+              "max": 1
+            }
+          }
+        ]
+      },
+      "transaction": "withdrawReserveTransaction"
     }
   },
   "transactions": {
@@ -140,6 +274,78 @@
           "outputIndex": 0
         }
       ]
+    },
+    "redeemFreshTransaction": {
+      "name": "Redeemed stamps",
+      "description": "Redeemed $(<stamps>) stamps for BCH.",
+      "icon": "redeem",
+      "inputs": [
+        {
+          "input": "freshReserveInput",
+          "inputIndex": 0
+        }
+      ],
+      "outputs": [
+        {
+          "output": "freshReserveOutput",
+          "outputIndex": 0
+        }
+      ]
+    },
+    "openShopTransaction": {
+      "name": "Opened a shop",
+      "description": "Minted $(<supply>) stamps into an issuer contract and locked $(<reserveFunding>) satoshis as the reward reserve.",
+      "icon": "shop",
+      "inputs": [],
+      "outputs": [
+        {
+          "output": "shopIssuerOutput",
+          "outputIndex": 0
+        },
+        {
+          "output": "shopReserveOutput",
+          "outputIndex": 1
+        },
+        {
+          "output": "announceOutput",
+          "outputIndex": 2
+        }
+      ]
+    },
+    "closeIssuerTransaction": {
+      "name": "Retired an issuer output",
+      "description": "The shop took back its unissued stamps.",
+      "icon": "shop",
+      "inputs": [
+        {
+          "input": "closeIssuerInput",
+          "inputIndex": 0
+        }
+      ],
+      "outputs": [
+        {
+          "output": "protocolFeeOutput",
+          "outputIndex": 0
+        },
+        {
+          "output": "shopRefundOutput"
+        }
+      ]
+    },
+    "withdrawReserveTransaction": {
+      "name": "Withdrew the reward reserve",
+      "description": "The shop took its reward reserve back.",
+      "icon": "shop",
+      "inputs": [
+        {
+          "input": "withdrawReserveInput"
+        }
+      ],
+      "outputs": [
+        {
+          "output": "shopRefundOutput"
+        }
+      ]
     }
   },
   "inputs": {
@@ -166,6 +372,26 @@
         "nft": null
       },
       "unlockingScript": "reserveRedeemUnlockingBytecode"
+    },
+    "freshReserveInput": {
+      "name": "Reward reserve",
+      "description": "A shop's reward reserve that holds no stamps yet.",
+      "icon": "contract",
+      "valueSatoshis": "$(<reserveSatoshis>)",
+      "token": null,
+      "unlockingScript": "reserveRedeemUnlockingBytecode"
+    },
+    "closeIssuerInput": {
+      "name": "Stamp issuer",
+      "description": "One of the shop's issuer outputs, retired by the shop key.",
+      "icon": "contract",
+      "unlockingScript": "issuerWithdrawUnlock"
+    },
+    "withdrawReserveInput": {
+      "name": "Reward reserve",
+      "description": "The shop's reward reserve, withdrawn by the shop key.",
+      "icon": "contract",
+      "unlockingScript": "reserveWithdrawUnlock"
     }
   },
   "outputs": {
@@ -212,6 +438,90 @@
         "nft": null
       }
     },
+    "freshReserveOutput": {
+      "name": "Reward reserve",
+      "description": "The reserve, recreated holding its first handed-in stamps and less BCH.",
+      "icon": "contract",
+      "lockingScript": "reserveLockingScript",
+      "valueSatoshis": "$(<reserveSatoshis> <stamps> <satsPerStampRedeemed> OP_MUL OP_SUB)",
+      "token": {
+        "category": "$(<stampCategory>)",
+        "amount": "$(<stamps>)",
+        "nft": null
+      },
+      "selectable": false,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      }
+    },
+    "shopIssuerOutput": {
+      "name": "Stamp issuer",
+      "description": "The issuer contract holding the whole stamp supply.",
+      "icon": "contract",
+      "lockingScript": "shopIssuerLockingScript",
+      "valueSatoshis": "$(<tokenDust>)",
+      "token": {
+        "category": "$(<stampCategory>)",
+        "amount": "$(<supply>)",
+        "nft": null
+      },
+      "selectable": false,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      }
+    },
+    "shopReserveOutput": {
+      "name": "Reward reserve",
+      "description": "BCH locked to pay for redeemed stamps.",
+      "icon": "contract",
+      "lockingScript": "shopReserveLockingScript",
+      "valueSatoshis": "$(<reserveFunding>)",
+      "token": null,
+      "selectable": false,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      }
+    },
+    "announceOutput": {
+      "name": "Shop announcement",
+      "description": "Names the shop and its key hash on chain, so anyone can rebuild its link.",
+      "icon": "shop",
+      "lockingScript": "announceLockingScript",
+      "valueSatoshis": "0",
+      "token": null,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      }
+    },
+    "shopRefundOutput": {
+      "name": "Back to the shop",
+      "description": "BCH returned to the shop key when it closes a contract output.",
+      "icon": "shop",
+      "lockingScript": "shopKeyLockingScript",
+      "valueSatoshis": "$(<refundSatoshis>)",
+      "token": null
+    },
+    "protocolFeeOutput": {
+      "name": "Protocol fees",
+      "description": "Fees the issuer output accrued, forwarded to the protocol.",
+      "icon": "contract",
+      "lockingScript": "protocolLockingScript",
+      "valueSatoshis": "$(<forwardSatoshis>)",
+      "token": null,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      }
+    },
     "reserveOutput": {
       "name": "Reward reserve",
       "description": "The reserve, recreated holding the handed-in stamps and less BCH.",
@@ -232,6 +542,118 @@
     }
   },
   "lockingScripts": {
+    "shopIssuerLockingScript": {
+      "name": "Stamp issuer contract (shop)",
+      "description": "The shop's view of its issuer contract: the same script, built from the shop key, so the shop can retire it.",
+      "icon": "contract",
+      "lockingType": "p2sh",
+      "lockingBytecode": "shopIssuerRedeemBytecode",
+      "state": {
+        "variables": [
+          "stampCategory",
+          "satsPerStampEarned",
+          "feePerStamp",
+          "protocolPkh"
+        ],
+        "secrets": []
+      },
+      "actions": [],
+      "roles": {
+        "merchant": {
+          "state": {
+            "variables": [],
+            "secrets": [
+              "merchantKey"
+            ]
+          },
+          "actions": [
+            {
+              "action": "closeIssuer",
+              "role": "merchant",
+              "secrets": [
+                {
+                  "merchantKey": null
+                }
+              ]
+            }
+          ],
+          "balance": {
+            "satoshis": "<bigint: 0n>",
+            "fungibleTokens": "<bigint: 0n>",
+            "nonfungibleTokens": 0
+          },
+          "selectable": false
+        }
+      }
+    },
+    "shopReserveLockingScript": {
+      "name": "Reward reserve contract (shop)",
+      "description": "The shop's view of its reward reserve, built from the shop key, so the shop can withdraw it.",
+      "icon": "contract",
+      "lockingType": "p2sh",
+      "lockingBytecode": "shopReserveRedeemBytecode",
+      "state": {
+        "variables": [
+          "stampCategory",
+          "satsPerStampRedeemed"
+        ],
+        "secrets": []
+      },
+      "actions": [],
+      "roles": {
+        "merchant": {
+          "state": {
+            "variables": [],
+            "secrets": [
+              "merchantKey"
+            ]
+          },
+          "actions": [
+            {
+              "action": "withdrawReserve",
+              "role": "merchant",
+              "secrets": [
+                {
+                  "merchantKey": null
+                }
+              ]
+            }
+          ],
+          "balance": {
+            "satoshis": "<bigint: 0n>",
+            "fungibleTokens": "<bigint: 0n>",
+            "nonfungibleTokens": 0
+          },
+          "selectable": false
+        }
+      }
+    },
+    "shopKeyLockingScript": {
+      "name": "Shop payments",
+      "description": "Payments to the shop, locked to the shop key.",
+      "icon": "shop",
+      "lockingType": "p2pkh",
+      "lockingBytecode": "lockShopKey",
+      "unlockingBytecode": "unlockShopKey",
+      "actions": [],
+      "roles": {
+        "merchant": {
+          "state": {
+            "variables": [],
+            "secrets": [
+              "merchantKey"
+            ]
+          },
+          "actions": [],
+          "balance": {
+            "satoshis": true,
+            "fungibleTokens": true,
+            "nonfungibleTokens": 0
+          },
+          "selectable": true
+        }
+      }
+    },
     "issuerLockingScript": {
       "name": "Stamp issuer contract",
       "description": "Releases a shop's stamps only in a transaction that pays the shop for them.",
@@ -298,6 +720,50 @@
         }
       }
     },
+    "announceLockingScript": {
+      "name": "Shop announcement",
+      "description": "An OP_RETURN naming the shop.",
+      "icon": "shop",
+      "lockingType": "p2s",
+      "lockingBytecode": "announceBytecode",
+      "state": {
+        "variables": [],
+        "secrets": []
+      },
+      "selectable": false,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      },
+      "roles": {
+        "merchant": {
+          "relevant": false
+        }
+      }
+    },
+    "protocolLockingScript": {
+      "name": "Protocol",
+      "description": "The protocol treasury address.",
+      "icon": "contract",
+      "lockingType": "p2s",
+      "lockingBytecode": "protocolP2PKH",
+      "state": {
+        "variables": [],
+        "secrets": []
+      },
+      "selectable": false,
+      "balance": {
+        "satoshis": "<bigint: 0n>",
+        "fungibleTokens": "<bigint: 0n>",
+        "nonfungibleTokens": 0
+      },
+      "roles": {
+        "merchant": {
+          "relevant": false
+        }
+      }
+    },
     "stampsLockingScript": {
       "name": "Stamps",
       "description": "Loyalty stamps held by the customer's own key.",
@@ -323,6 +789,15 @@
                   "ownerKey": null
                 }
               ]
+            },
+            {
+              "action": "redeemFresh",
+              "role": "customer",
+              "secrets": [
+                {
+                  "ownerKey": null
+                }
+              ]
             }
           ],
           "balance": {
@@ -341,6 +816,14 @@
     "reserveRedeemBytecode": "<merchantPkh> <satsPerStampRedeemed> <$(<stampCategory> OP_REVERSEBYTES)> OP_3 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_INPUTINDEX OP_DUP OP_OUTPUTBYTECODE OP_OVER OP_UTXOBYTECODE OP_EQUALVERIFY OP_DUP OP_OUTPUTTOKENCATEGORY OP_2 OP_PICK OP_EQUALVERIFY OP_0 OP_OVER OP_UTXOTOKENCATEGORY OP_3 OP_ROLL OP_EQUAL OP_IF OP_OVER OP_UTXOTOKENAMOUNT OP_NIP OP_ELSE OP_OVER OP_UTXOTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_ENDIF OP_OVER OP_OUTPUTTOKENAMOUNT OP_SWAP OP_SUB OP_DUP OP_0 OP_GREATERTHAN OP_VERIFY OP_OVER OP_OUTPUTVALUE OP_ROT OP_UTXOVALUE OP_2SWAP OP_MUL OP_SUB OP_GREATERTHANOREQUAL OP_NIP OP_NIP OP_ELSE OP_3 OP_ROLL OP_1 OP_NUMEQUALVERIFY OP_3 OP_PICK OP_HASH160 OP_3 OP_ROLL OP_EQUALVERIFY OP_2SWAP OP_CHECKSIG OP_NIP OP_NIP OP_ENDIF",
     "reserveRedeemUnlockingBytecode": "OP_0 <reserveRedeemBytecode>",
     "shopP2PKH": "OP_DUP OP_HASH160 <merchantPkh> OP_EQUALVERIFY OP_CHECKSIG",
+    "protocolP2PKH": "OP_DUP OP_HASH160 <protocolPkh> OP_EQUALVERIFY OP_CHECKSIG",
+    "shopIssuerRedeemBytecode": "<protocolPkh> <feePerStamp> <$(<merchantKey.public_key> OP_HASH160)> <satsPerStampEarned> <$(<stampCategory> OP_REVERSEBYTES)> OP_5 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_INPUTINDEX OP_0 OP_NUMEQUALVERIFY OP_0 OP_OUTPUTBYTECODE OP_0 OP_UTXOBYTECODE OP_EQUALVERIFY OP_0 OP_OUTPUTTOKENCATEGORY OP_EQUALVERIFY OP_0 OP_UTXOTOKENAMOUNT OP_0 OP_OUTPUTTOKENAMOUNT OP_SUB OP_DUP OP_0 OP_GREATERTHAN OP_VERIFY OP_0 OP_OUTPUTVALUE OP_0 OP_UTXOVALUE OP_2 OP_PICK OP_6 OP_PICK OP_MUL OP_ADD OP_GREATERTHANOREQUAL OP_VERIFY OP_1 OP_OUTPUTBYTECODE <0x76a914> OP_4 OP_ROLL OP_CAT <0x88ac> OP_CAT OP_EQUALVERIFY OP_1 OP_OUTPUTVALUE OP_SWAP OP_2SWAP OP_SWAP OP_SUB OP_MUL OP_GREATERTHANOREQUAL OP_NIP OP_NIP OP_ELSE OP_5 OP_PICK OP_1 OP_NUMEQUAL OP_IF OP_INPUTINDEX OP_0 OP_NUMEQUALVERIFY OP_0 OP_UTXOVALUE <0x204e> OP_GREATERTHANOREQUAL OP_VERIFY OP_0 OP_OUTPUTBYTECODE OP_0 OP_UTXOBYTECODE OP_EQUALVERIFY OP_0 OP_OUTPUTTOKENCATEGORY OP_0 OP_UTXOTOKENCATEGORY OP_EQUALVERIFY OP_0 OP_OUTPUTTOKENAMOUNT OP_0 OP_UTXOTOKENAMOUNT OP_NUMEQUALVERIFY OP_0 OP_OUTPUTVALUE <0xe803> OP_GREATERTHANOREQUAL OP_VERIFY OP_1 OP_OUTPUTBYTECODE <0x76a914> OP_6 OP_ROLL OP_CAT <0x88ac> OP_CAT OP_EQUALVERIFY OP_1 OP_OUTPUTVALUE OP_0 OP_UTXOVALUE <0xd007> OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_2DROP OP_2DROP OP_DROP OP_1 OP_ELSE OP_5 OP_ROLL OP_2 OP_NUMEQUALVERIFY OP_5 OP_PICK OP_HASH160 OP_3 OP_ROLL OP_EQUALVERIFY OP_2ROT OP_CHECKSIGVERIFY OP_INPUTINDEX OP_0 OP_NUMEQUALVERIFY OP_0 OP_UTXOVALUE <0xb80b> OP_GREATERTHAN OP_IF OP_0 OP_OUTPUTBYTECODE <0x76a914> OP_5 OP_PICK OP_CAT <0x88ac> OP_CAT OP_EQUALVERIFY OP_0 OP_OUTPUTVALUE OP_0 OP_UTXOVALUE <0xd007> OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_ENDIF OP_2DROP OP_2DROP OP_1 OP_ENDIF OP_ENDIF",
+    "shopReserveRedeemBytecode": "<$(<merchantKey.public_key> OP_HASH160)> <satsPerStampRedeemed> <$(<stampCategory> OP_REVERSEBYTES)> OP_3 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_INPUTINDEX OP_DUP OP_OUTPUTBYTECODE OP_OVER OP_UTXOBYTECODE OP_EQUALVERIFY OP_DUP OP_OUTPUTTOKENCATEGORY OP_2 OP_PICK OP_EQUALVERIFY OP_0 OP_OVER OP_UTXOTOKENCATEGORY OP_3 OP_ROLL OP_EQUAL OP_IF OP_OVER OP_UTXOTOKENAMOUNT OP_NIP OP_ELSE OP_OVER OP_UTXOTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_ENDIF OP_OVER OP_OUTPUTTOKENAMOUNT OP_SWAP OP_SUB OP_DUP OP_0 OP_GREATERTHAN OP_VERIFY OP_OVER OP_OUTPUTVALUE OP_ROT OP_UTXOVALUE OP_2SWAP OP_MUL OP_SUB OP_GREATERTHANOREQUAL OP_NIP OP_NIP OP_ELSE OP_3 OP_ROLL OP_1 OP_NUMEQUALVERIFY OP_3 OP_PICK OP_HASH160 OP_3 OP_ROLL OP_EQUALVERIFY OP_2SWAP OP_CHECKSIG OP_NIP OP_NIP OP_ENDIF",
+    "issuerWithdrawUnlock": "<merchantKey.schnorr_signature.all_outputs> <merchantKey.public_key> OP_2",
+    "reserveWithdrawUnlock": "<merchantKey.schnorr_signature.all_outputs> <merchantKey.public_key> OP_1",
+    "lockShopKey": "OP_DUP OP_HASH160 <$(<merchantKey.public_key> OP_HASH160)> OP_EQUALVERIFY OP_CHECKSIG",
+    "unlockShopKey": "<merchantKey.schnorr_signature.all_outputs> <merchantKey.public_key>",
+    "announceBytecode": "OP_RETURN <\"RGLR\"> <$(<merchantKey.public_key> OP_HASH160)> <shopName>",
     "lockStamps": "OP_DUP OP_HASH160 <$(<ownerKey.public_key> OP_HASH160)> OP_EQUALVERIFY OP_CHECKSIG",
     "unlockStamps": "<ownerKey.schnorr_signature.all_outputs> <ownerKey.public_key>"
   },
@@ -412,6 +895,36 @@
       "name": "Stamps",
       "description": "Number of stamps to earn or redeem.",
       "type": "token_amount"
+    },
+    "merchantKey": {
+      "name": "Shop key",
+      "description": "Key the shop is paid to; the only key that can close its contracts.",
+      "type": "private_key"
+    },
+    "supply": {
+      "name": "Stamp supply",
+      "description": "Stamps minted into the issuer contract when the shop opens.",
+      "type": "token_amount"
+    },
+    "reserveFunding": {
+      "name": "Reserve funding",
+      "description": "Satoshis locked in the reward reserve when the shop opens.",
+      "type": "satoshis"
+    },
+    "shopName": {
+      "name": "Shop name",
+      "description": "Name shown to customers (UTF-8 bytes).",
+      "type": "bytes"
+    },
+    "refundSatoshis": {
+      "name": "Refund",
+      "description": "Satoshis returned to the shop key after the network fee.",
+      "type": "satoshis"
+    },
+    "forwardSatoshis": {
+      "name": "Forwarded fees",
+      "description": "Accrued protocol fees forwarded when an issuer output is retired.",
+      "type": "satoshis"
     }
   },
   "icons": [

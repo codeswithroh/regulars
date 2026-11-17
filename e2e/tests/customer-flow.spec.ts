@@ -213,7 +213,27 @@ test.skipIf(Boolean(process.env.E2E_SKIP_MERCHANT))('a merchant opens a shop fro
   await redeemAll(visitor);
   await expect(visitor.getByRole('status')).toContainText(/Redeemed 2 stamps for/);
   check((await chain(opened)).reserveSats).toBe(6000n - 40n);
-});
+
+  // The owner closes the shop: the reserve comes back, every issuer output is retired and its stamps burned.
+  const before = (await utxosAt(paidTo)).reduce((sum, u) => sum + u.satoshis, 0n);
+  await page.goto(`/#/app/manage${shopPath(opened)}`);
+  await page.getByRole('button', { name: 'Close shop…' }).click();
+  await expect(page.getByTestId('close-shop')).toContainText('Wallet approvals');
+  const closeButton = page.getByRole('button', { name: 'Close shop', exact: true });
+  await expect(closeButton).toBeDisabled();
+  await page.getByLabel('Shop name to confirm').fill('Corner Coffee & Co');
+  const signedBefore = merchant.signed.length;
+  await closeButton.click();
+  await expect(page.getByRole('status')).toContainText('Corner Coffee & Co is closed', { timeout: 180_000 });
+  check(merchant.signed.length - signedBefore).toBe(8); // one per issuer output; the reserve rides along with the first
+  check(await chain(opened)).toMatchObject({ stampsLeft: 0n, issuerSats: 0n, reserveSats: 0n });
+  const after = (await utxosAt(paidTo)).reduce((sum, u) => sum + u.satoshis, 0n);
+  check(after - before).toBeGreaterThan(5000n);
+  // The link now says the shop is not taking payments.
+  await visitor.goto(`/#${shopPath(opened)}`);
+  await visitor.reload();
+  await expect(visitor.locator('.notice.error')).toContainText('This shop is not taking payments');
+}, 600_000);
 
 test('the home page shows the live demo shop, and broken links are handled', async () => {
   const page = await open();
@@ -240,5 +260,5 @@ test('the home page shows the live demo shop, and broken links are handled', asy
   await page.goto('/#/s/Nope/zz/zz/1/1');
   await expect(page.locator('.notice.error')).toContainText('not a valid shop');
   await page.goto(`/#/s/Ghost/${'ab'.repeat(32)}/${'cd'.repeat(20)}/1000/30`);
-  await expect(page.locator('.notice.error')).toContainText('No shop was found at this link');
+  await expect(page.locator('.notice.error')).toContainText('This shop is not taking payments');
 });

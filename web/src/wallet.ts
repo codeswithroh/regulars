@@ -1,9 +1,9 @@
 // Everything that touches the chain. There is no backend: the page talks to an Electrum server
 // and asks the connected wallet to sign.
-import { TransactionBuilder, placeholderP2PKHUnlocker, type SpendableUtxo } from 'cashscript';
-import { hash160, encodeCashAddress, stringify, binToHex } from '@bitauth/libauth';
+import { TransactionBuilder, placeholderP2PKHUnlocker, placeholderPublicKey, placeholderSignature, type SpendableUtxo } from 'cashscript';
+import { hash160, encodeCashAddress, stringify, binToHex, hexToBin } from '@bitauth/libauth';
 import type { DappConnectionManager } from '@wizardconnect/dapp';
-import { makeIssuer, makeReserve, buildCreateShop, buildEarn, buildRedeem, FailoverProvider, BCH_DUST, PLACEHOLDER_INPUT_BYTES, type Shop, type Coin } from '@regulars/contracts';
+import { makeIssuer, makeReserve, buildCreateShop, buildEarn, buildRedeem, buildCloseShop, FailoverProvider, BCH_DUST, PLACEHOLDER_INPUT_BYTES, type Shop, type Coin } from '@regulars/contracts';
 import { commitmentScript } from '@regulars/bch-nostr-id';
 import { network, prefix, protocol } from './config';
 
@@ -65,6 +65,7 @@ export interface ShopState {
   /** BCH locked in the reward reserve. */
   reserve: bigint;
   reserveUtxo?: SpendableUtxo;
+  reserves: SpendableUtxo[];
   /** Stamps the shop can still give out. */
   stampsLeft: bigint;
   /** Stamps customers have redeemed so far. */
@@ -80,6 +81,7 @@ export async function readShop(shop: Shop): Promise<ShopState> {
     issuers: live,
     stampsLeft: live.reduce((sum, u) => sum + u.token!.amount, 0n),
     reserve: reserves.reduce((sum, u) => sum + u.satoshis, 0n),
+    reserves,
     reserveUtxo: [...reserves].sort((a, b) => Number(b.satoshis - a.satoshis))[0],
     redeemed: reserves.reduce((sum, u) => sum + (isStamp(u, shop) ? u.token!.amount : 0n), 0n),
   };
@@ -228,6 +230,52 @@ export async function openShop(manager: DappConnectionManager, input: NewShop, o
   });
   const txid = await signAndSend(manager, builder, inputs.map(pathOf), `Open "${input.name}": mint stamps and fund a ${input.reserveSats}-sat reward reserve`);
   return { shop, txid };
+}
+
+/** Where in the connected wallet the key with this hash160 lives, if it is one of the addresses this site reads. */
+function pathOfPkh(manager: DappConnectionManager, pkh: string): { path: string; index: number } | undefined {
+  for (const path of PATHS) {
+    for (let index = 0; index < ADDRESSES_PER_PATH; index++) {
+      const pubkey = manager.getPubkey(path.child, BigInt(index));
+      if (pubkey && binToHex(hash160(pubkey)) === pkh) return { path: path.name, index };
+    }
+  }
+  return undefined;
+}
+
+/** True when the connected wallet holds the shop's key, and so can close it. */
+export const ownsShop = (manager: DappConnectionManager | undefined, shop: Shop) => Boolean(manager && pathOfPkh(manager, shop.merchantPkh));
+
+function planClose(shop: Shop, state: ShopState, merchantAddress = '') {
+  return buildCloseShop({
+    shop, protocol, issuers: state.issuers, reserves: state.reserves,
+    merchantPk: placeholderPublicKey(), merchantSig: placeholderSignature(),
+    merchantAddress: merchantAddress || encodeCashAddress({ prefix, type: 'p2pkh', payload: hexToBin(shop.merchantPkh), throwErrors: true }).address,
+    provider,
+  });
+}
+
+/** What closing would return and burn, without asking the wallet for anything. */
+export function previewClose(shop: Shop, state: ShopState) {
+  try { const { builders, plan } = planClose(shop, state); return { ...plan, approvals: builders.length }; } catch { return undefined; }
+}
+
+/**
+ * Close a shop: take back the reward reserve and retire every issuer output, burning the stamps
+ * left in them. Each issuer output is its own transaction, so the wallet is asked once per output.
+ */
+export async function closeShop(manager: DappConnectionManager, shop: Shop, state: ShopState, onStep: (text: string) => void) {
+  const key = pathOfPkh(manager, shop.merchantPkh);
+  if (!key) throw new Error('Only the wallet that opened this shop can close it');
+  const { builders, plan } = planClose(shop, state);
+  const txids: string[] = [];
+  for (const [n, builder] of builders.entries()) {
+    onStep(`Approve ${n + 1} of ${builders.length} in your wallet…`);
+    // Every input is a shop contract that needs the shop key's signature; the wallet fills in the placeholders.
+    const paths = builder.inputs.map((_, i) => [i, key.path, key.index] as [number, string, number]);
+    txids.push(await signAndSend(manager, builder, paths, `Close "${shop.name}" (${n + 1} of ${builders.length}): ${n === 0 && state.reserves.length ? 'take back the reward reserve and ' : ''}retire unissued stamps`));
+  }
+  return { txids, plan };
 }
 
 /** The address a wallet's on-chain identity commitment is spent from: receive/0 when it holds a coin, else the largest coin's. */

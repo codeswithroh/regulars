@@ -104,6 +104,7 @@ and its customers.
 | 🔍 | Every fee shown before you sign | **Analytics** read from the chain: revenue, customers, redemptions |
 | 🌐 | Works in any wallet that speaks WizardConnect, or any XO wallet via the [template](xo/README.md) | No server, no database, nothing to host but static files |
 | 🪪 | Link your wallet to a **Nostr identity**, sign in to apps, get paid by npub | A **verified merchant** badge so customers know the shop is real |
+| 🚪 | A closed shop's link says so plainly instead of taking payment | **Close the shop** any time: the reserve comes back, unissued stamps are burned, and only the shop's key can do it |
 
 ## How it works
 
@@ -135,6 +136,12 @@ the shop reclaim unissued stamps; accrued fees still go to the treasury.
 **`RewardReserve`** holds the shop's reward BCH. `redeem()` checks that the reserve is recreated,
 that its stamp balance grew by N, and that at most `N × satsPerStamp` left. `withdraw()` is the
 shop closing the reserve.
+
+**Closing a shop** spends every contract output with `withdraw()`, signed by the shop key. The
+issuer only runs `withdraw()` at input 0, so each issuer output is its own transaction (the reserve
+rides along with the first), and the wallet is asked once per output. The shop's remaining stamps
+are burned, so nothing from a closed shop can be issued or redeemed again. Before closing, the
+dashboard shows what comes back, what is burned, and how many stamps customers still hold.
 
 A shop is fully described by five values (name, token category, shop key hash, earn rate, redeem
 rate), and both contract addresses follow from them. So a shop *is* its link:
@@ -181,7 +188,7 @@ The library is reusable on its own: `@regulars/bch-nostr-id` in [`identity/`](id
 | [`web/`](web) | The site: an animated landing page (`#/`) and a separate dashboard (`#/app`) with overview, shop checkout, activity, merchant analytics read from the chain, open-a-shop, and a printable poster |
 | [`cli/`](cli) | Owner tools (open the demo shop, status, collect fees) and a live multi-customer check |
 | [`e2e/`](e2e) | Browser tests: Chromium driven by Playwright, with a headless WizardConnect wallet |
-| [`xo/`](xo) | An XO template so any XO wallet can earn and redeem |
+| [`xo/`](xo) | An XO template with both roles: a shop can open and close, a customer can earn and redeem |
 | [`identity/`](identity) | `bch-nostr-id`: bind, discover, verify and authenticate BCH + Nostr identities |
 | [`scripts/`](scripts) | Vercel static build |
 
@@ -189,7 +196,7 @@ The library is reusable on its own: `@regulars/bch-nostr-id` in [`identity/`](id
 
 ```bash
 npm install
-npm run compile && npm test       # 23 covenant tests on CashScript's mock network
+npm run compile && npm test       # 28 covenant tests on CashScript's mock network
 cp .env.example .env
 npm run shop -- keygen            # writes a key to .env, prints the address to fund
 # fund it from a chipnet faucet (https://tbch.googol.cash), then:
@@ -216,7 +223,7 @@ E2E_BASE_URL=https://your-site npm run test:e2e   # the same browser tests again
 
 The browser suite pairs a headless wallet over the real WizardConnect relay and covers: pay and
 earn, redeem, a rejected signature, an empty wallet, reconnecting after reload, a merchant opening
-a shop from the UI, the poster, and broken links.
+a shop from the UI and closing it again, the poster, and broken links.
 
 ## Deploy
 
@@ -239,7 +246,6 @@ The output is static files only. No environment variables are needed on the host
 - Shop links are self-describing, so a link can be crafted for a different shop with the same
   name. Shops that link their payout address to a Nostr identity show a "Run by …" badge; for
   unverified shops, customers should get the link or poster from the shop itself.
-- Closing a shop (`withdraw`) is implemented and tested in the contracts but has no button yet.
 
 ---
 

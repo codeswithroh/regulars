@@ -3,7 +3,8 @@ import QRCode from 'qrcode';
 import { ArrowDownRight, ArrowUpRight, ChevronDown, Copy, Plus, Printer, Store, Check } from 'lucide-react';
 import { shopPath, type Shop } from '@regulars/contracts';
 import { daily, statsOf, type ShopEvent } from '../history';
-import { readWallet, fundReserve } from '../wallet';
+import { readWallet, fundReserve, ownsShop } from '../wallet';
+import { CloseShop } from './CloseShop';
 import { AreaChart, Heatmap, Ring, SegBar } from '../components/charts';
 import { Avatar, CountUp, Empty, Toast, ago, fmt, sats } from '../components/kit';
 import { go, keyOf, useAction, useHistory, useKnownShops, useShopState, useWallet } from '../ui';
@@ -178,6 +179,7 @@ export function Manage({ shop: requested }: { shop?: Shop }) {
           </div>
         </div>
       </section>
+      {state && manager && ownsShop(manager, shop) && <CloseShop shop={shop} state={state} held={held > 0n ? held : 0n} manager={manager} busy={busy} run={run} />}
       <Toast notice={notice} onClose={clear} />
     </>
   );

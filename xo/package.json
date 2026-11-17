@@ -6,6 +6,7 @@
   "scripts": {
     "template": "tsx src/write-template.ts",
     "run:chipnet": "tsx src/run.ts",
+    "run:merchant": "tsx src/run-merchant.ts",
     "typecheck": "tsc -p ."
   },
   "dependencies": {

@@ -209,4 +209,70 @@ export function buildCollect(opts: { shop: Shop; protocol: Protocol; issuerUtxo:
   return withFee(assemble, 900n, [], true);
 }
 
+/** Above this many sats an issuer output holds accrued protocol fees that a withdrawal must forward. */
+const ISSUER_FEE_THRESHOLD = 3000n;
+
+export interface ClosePlan {
+  /** BCH that comes back to the shop: the reserve plus whatever the issuer outputs hold beyond fees. */
+  returned: bigint;
+  /** Unissued stamps (and stamps already redeemed into the reserve) that are destroyed. */
+  burned: bigint;
+  /** Accrued protocol fees forwarded to the protocol address. */
+  protocolFees: bigint;
+  /** Network fees over every transaction. */
+  fee: bigint;
+}
+
+/**
+ * Close a shop: the merchant reclaims the reward reserve and retires every issuer output. The
+ * issuer covenant only lets its withdrawal run at input 0, so each issuer output needs its own
+ * transaction; the reserve outputs ride along with the first one. Stamps the shop still holds are
+ * burned, so nothing from a closed shop can be issued or redeemed again.
+ *
+ * `merchantPk` / `merchantSig` are the shop key and a signer for it: real ones in tests and the CLI,
+ * WalletConnect placeholders in the browser (the wallet fills them in).
+ */
+export function buildCloseShop(opts: {
+  shop: Shop;
+  protocol: Protocol;
+  issuers: SpendableUtxo[];
+  reserves: SpendableUtxo[];
+  merchantPk: Uint8Array;
+  merchantSig: Parameters<ReturnType<typeof makeReserve>['unlock']['withdraw']>[1];
+  merchantAddress: string;
+  provider: NetworkProvider;
+}): { builders: TransactionBuilder[]; plan: ClosePlan } {
+  const { shop, protocol, provider } = opts;
+  const issuer = makeIssuer(shop, protocol, provider);
+  const reserve = makeReserve(shop, provider);
+  const groups: { issuer?: SpendableUtxo; reserves: SpendableUtxo[] }[] = opts.issuers.map((utxo, i) => ({ issuer: utxo, reserves: i === 0 ? opts.reserves : [] }));
+  if (!groups.length && opts.reserves.length) groups.push({ reserves: opts.reserves });
+  if (!groups.length) throw new Error('This shop has nothing left to close');
+
+  const plan: ClosePlan = { returned: 0n, burned: 0n, protocolFees: 0n, fee: 0n };
+  const builders = groups.map((group) => {
+    const inputs = [...(group.issuer ? [group.issuer] : []), ...group.reserves];
+    const forward = group.issuer && group.issuer.satoshis > ISSUER_FEE_THRESHOLD ? group.issuer.satoshis - 2000n : 0n;
+    const spare = total(inputs.map((utxo) => ({ utxo }) as Coin)) - forward;
+    const assemble = (fee: bigint) => {
+      const keep = spare - fee;
+      if (keep < 0n) throw new Error('These outputs hold too little to pay the network fee');
+      const builder = new TransactionBuilder({ provider, allowImplicitFungibleTokenBurn: true });
+      if (group.issuer) builder.addInput(group.issuer, issuer.unlock.withdraw(opts.merchantPk, opts.merchantSig));
+      group.reserves.forEach((utxo) => builder.addInput(utxo, reserve.unlock.withdraw(opts.merchantPk, opts.merchantSig)));
+      if (forward) builder.addOutput({ to: p2pkh(protocol.protocolPkh), amount: forward });
+      // Whatever is too small to be worth an output goes to the miners; a marker keeps the transaction valid.
+      return keep >= BCH_DUST ? builder.addOutput({ to: opts.merchantAddress, amount: keep }) : builder.addOpReturnOutput(['regulars', 'closed']);
+    };
+    const { builder, fee } = withFee(assemble, 900n, [], true);
+    const keep = spare - fee;
+    plan.returned += keep >= BCH_DUST ? keep : 0n;
+    plan.fee += keep >= BCH_DUST ? fee : spare;
+    plan.protocolFees += forward;
+    plan.burned += inputs.reduce((sum, utxo) => sum + (isStamps(utxo, shop) ? utxo.token!.amount : 0n), 0n);
+    return builder;
+  });
+  return { builders, plan };
+}
+
 export { shopPath, parseShopPath } from './links.js';

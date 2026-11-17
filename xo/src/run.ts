@@ -152,7 +152,12 @@ try {
   });
   const template = (await engine.getTemplate(templateIdentifier))!;
   const earnIntent = template.start!.find((i) => i.action === 'earn')!;
-  const funding = (await plainCoins()).sort((a, b) => Number(BigInt(b.valueSatoshis) - BigInt(a.valueSatoshis)))[0];
+  // Largest coins first until the payment, the stamps output and fees are covered.
+  const funding: Awaited<ReturnType<typeof plainCoins>> = [];
+  for (const coin of (await plainCoins()).sort((a, b) => Number(BigInt(b.valueSatoshis) - BigInt(a.valueSatoshis)))) {
+    if (funding.reduce((s, u) => s + BigInt(u.valueSatoshis), 0n) >= STAMPS * shop.earn + 3000n) break;
+    funding.push(coin);
+  }
 
   const earnValues = { ...shopValues, feePerStamp: fees.feePerStamp, protocolPkh: fees.protocolPkh, issuerSatoshis: issuerUtxo.satoshis, issuerStamps: issuerUtxo.token!.amount, stamps: STAMPS };
   const earn = await engine.createInvitation({
@@ -162,7 +167,7 @@ try {
     variables: variables(earnValues),
     inputs: [
       { inputIdentifier: 'issuerInput', outpointTransactionHash: hexToBin(issuerUtxo.txid), outpointIndex: issuerUtxo.vout, unlockingBytecode: contractUnlock('issuerEarnUnlockingBytecode', earnValues, issuer.bytecode) },
-      { outpointTransactionHash: hexToBin(funding.outpointTransactionHash), outpointIndex: funding.outpointIndex },
+      ...funding.map((coin) => ({ outpointTransactionHash: hexToBin(coin.outpointTransactionHash), outpointIndex: coin.outpointIndex })),
     ],
   });
   const earnId = earn.invitation.invitationIdentifier;

@@ -2,7 +2,7 @@ import 'cashscript/vitest';
 import { MockNetworkProvider, SignatureTemplate, TransactionBuilder, randomUtxo, type SpendableUtxo } from 'cashscript';
 import { secp256k1, hash160, binToHex, hexToBin, encodeCashAddress, generatePrivateKey } from '@bitauth/libauth';
 import {
-  makeIssuer, makeReserve, buildCreateShop, buildEarn, buildRedeem, buildCollect, shopPath, parseShopPath,
+  makeIssuer, makeReserve, buildCreateShop, buildEarn, buildRedeem, buildCollect, buildCloseShop, shopPath, parseShopPath,
   type Shop, type Protocol,
 } from '../src/index.js';
 
@@ -253,6 +253,49 @@ describe('RewardReserve', () => {
       .addInput(reserveUtxo, w.reserve.unlock.withdraw(who.pub, who.sig)).addOutput({ to: who.address, amount: 99_000n });
     expect(by(w.customer)).toFailRequireWith('not the merchant');
     await expect(by(w.merchant).send()).resolves.toBeDefined();
+  });
+});
+
+describe('closing a shop', () => {
+  it('returns the reserve, forwards accrued fees and burns every stamp the shop holds', async () => {
+    const w = await world({ issuerOutputs: 3 });
+    await w.earn(20_000n);
+    const { builder: redeem } = buildRedeem({ ...(await (async () => {
+      const [reserveUtxo] = await w.reserve.getUtxos();
+      const stampInputs = (await w.stampsOf(w.customer.address)).map((utxo) => ({ utxo, unlocker: w.customer.sig.unlockP2PKH() }));
+      return { shop: w.shop, reserveUtxo, stampInputs, customerAddress: w.customer.address, customerTokenAddress: w.customer.tokenAddress, provider: w.provider };
+    })()), stamps: 20n });
+    await redeem.send();
+    // One issuer output has accrued fees past the threshold.
+    const [first] = await w.issuer.getUtxos();
+    w.provider.addUtxo(w.issuer.tokenAddress, randomUtxo({ satoshis: 9_000n, token: { category: w.shop.category, amount: 50n } }));
+    const issuers = await w.issuer.getUtxos();
+    const reserves = await w.reserve.getUtxos();
+    const before = (await w.provider.getUtxos(w.merchant.address)).reduce((s, u) => s + u.satoshis, 0n);
+    const { builders, plan } = buildCloseShop({
+      shop: w.shop, protocol: w.protocol, issuers, reserves, merchantPk: w.merchant.pub, merchantSig: w.merchant.sig,
+      merchantAddress: w.merchant.address, provider: w.provider,
+    });
+    expect(builders).toHaveLength(issuers.length);
+    for (const b of builders) await b.send();
+    expect(await w.issuer.getUtxos()).toHaveLength(0);
+    expect(await w.reserve.getUtxos()).toHaveLength(0);
+    expect(plan.burned).toBe(issuers.reduce((s, u) => s + u.token!.amount, 0n) + 20n);
+    expect(plan.protocolFees).toBe(7_000n);
+    const after = (await w.provider.getUtxos(w.merchant.address)).reduce((s, u) => s + u.satoshis, 0n);
+    expect(after - before).toBe(plan.returned);
+    expect(plan.returned).toBeGreaterThan(99_000n);
+    expect((await w.provider.getUtxos(w.merchant.tokenAddress)).some((u) => u.token)).toBe(false);
+    void first;
+  });
+
+  it('cannot be signed by anyone but the shop', async () => {
+    const w = await world();
+    const { builders } = buildCloseShop({
+      shop: w.shop, protocol: w.protocol, issuers: await w.issuer.getUtxos(), reserves: await w.reserve.getUtxos(),
+      merchantPk: w.customer.pub, merchantSig: w.customer.sig, merchantAddress: w.customer.address, provider: w.provider,
+    });
+    expect(builders[0]).toFailRequireWith('not the shop');
   });
 });
 

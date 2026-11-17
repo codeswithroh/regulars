@@ -162,7 +162,7 @@ export function ShopPay({ shop }: { shop: Shop }) {
         </aside>
       </section>
       {(error || missingShop) && (
-        <p className="notice error" style={{ animation: 'none' }}><Store size={18} />{missingShop ? 'No shop was found at this link on this network. Check the link is complete.' : `Could not read the chain: ${error}`}</p>
+        <p className="notice error" style={{ animation: 'none' }}><Store size={18} />{missingShop ? 'This shop is not taking payments. It may have been closed by its owner, or the link is incomplete or for another network.' : `Could not read the chain: ${error}`}</p>
       )}
       <Toast notice={notice} onClose={clear} />
     </>

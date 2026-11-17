@@ -5,7 +5,7 @@ import { SighashType, SignatureTemplate } from 'cashscript';
 import {
   deriveHdPath, deriveHdPrivateNodeFromSeed, deriveHdPublicNode, deriveHdPrivateNodeChild, encodeHdPublicKey,
   secp256k1, hash160, encodeCashAddress, decodeTransaction, encodeTransaction, hexToBin, binToHex,
-  type Transaction,
+  generateSigningSerializationBCH, sha256, type Transaction,
 } from '@bitauth/libauth';
 import { parseExtendedJson } from '@wizardconnect/core';
 import { WalletConnectionManager, DerivationPath, type WalletAdapter } from '@wizardconnect/wallet';
@@ -64,11 +64,29 @@ export class TestWallet implements WalletAdapter {
     } else {
       tx = wc.transaction;
     }
+    const sigPlaceholder = '41' + '00'.repeat(65);
+    const pubkeyPlaceholder = '21' + '00'.repeat(33);
     for (const [inputIndex, pathName, addressIndex] of inputPaths) {
       const path = PATH_INDEX[pathName];
       if (path === undefined) throw new Error(`Unknown path ${pathName}`);
+      const privateKey = this.privateKey(path, BigInt(addressIndex));
+      const source = (wc.sourceOutputs as { unlockingBytecode: Uint8Array; contract?: { redeemScript: Uint8Array } }[])[inputIndex];
+      if (source.contract) {
+        // A contract input: fill the dapp's signature and key placeholders, as Cashonize does.
+        const hashType = SighashType.SIGHASH_ALL | SighashType.SIGHASH_UTXOS | 0x40;
+        const serialization = generateSigningSerializationBCH(
+          { inputIndex, sourceOutputs: wc.sourceOutputs as never, transaction: tx },
+          { coveredBytecode: source.contract.redeemScript, signingSerializationType: new Uint8Array([hashType]) },
+        );
+        const signature = secp256k1.signMessageHashSchnorr(privateKey, sha256.hash(sha256.hash(serialization))) as Uint8Array;
+        const pubkey = secp256k1.derivePublicKeyCompressed(privateKey) as Uint8Array;
+        tx.inputs[inputIndex].unlockingBytecode = hexToBin(binToHex(source.unlockingBytecode)
+          .replace(sigPlaceholder, '41' + binToHex(signature) + hashType.toString(16).padStart(2, '0'))
+          .replace(pubkeyPlaceholder, '21' + binToHex(pubkey)));
+        continue;
+      }
       // WizardConnect requires SIGHASH_ALL | SIGHASH_FORKID | SIGHASH_UTXOS.
-      const signer = new SignatureTemplate(this.privateKey(path, BigInt(addressIndex)), SighashType.SIGHASH_ALL | SighashType.SIGHASH_UTXOS);
+      const signer = new SignatureTemplate(privateKey, SighashType.SIGHASH_ALL | SighashType.SIGHASH_UTXOS);
       tx.inputs[inputIndex].unlockingBytecode = signer.unlockP2PKH().generateUnlockingBytecode({
         transaction: tx, sourceOutputs: wc.sourceOutputs as never, inputIndex,
       });
